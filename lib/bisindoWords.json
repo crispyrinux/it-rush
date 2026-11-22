@@ -1,5 +1,5 @@
 {
-  "modelVersion": "custom-20261122-231918",
+  "modelVersion": "custom-20261123-003818",
   "words": [
     {
       "id": "alam",
@@ -11,8 +11,8 @@
     {
       "id": "ancaman",
       "title": "Ancaman",
-      "hands": 2,
-      "guide": "Amati animasi contoh kata \"Ancaman\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "hands": 1,
+      "guide": "Amati animasi contoh kata \"Ancaman\", lalu praktikkan gerakan dengan satu tangan di depan kamera selama 2,5 detik.",
       "localVideoPath": "/videos/bisindo/ancaman.mp4"
     },
     {
@@ -39,8 +39,8 @@
     {
       "id": "iklim",
       "title": "Iklim",
-      "hands": 2,
-      "guide": "Amati animasi contoh kata \"Iklim\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "hands": 1,
+      "guide": "Amati animasi contoh kata \"Iklim\", lalu praktikkan gerakan dengan satu tangan di depan kamera selama 2,5 detik.",
       "localVideoPath": "/videos/bisindo/iklim.mp4"
     },
     {
@@ -67,8 +67,8 @@
     {
       "id": "perubahan",
       "title": "Perubahan",
-      "hands": 2,
-      "guide": "Amati animasi contoh kata \"Perubahan\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "hands": 1,
+      "guide": "Amati animasi contoh kata \"Perubahan\", lalu praktikkan gerakan dengan satu tangan di depan kamera selama 2,5 detik.",
       "localVideoPath": "/videos/bisindo/perubahan.mp4"
     },
     {
