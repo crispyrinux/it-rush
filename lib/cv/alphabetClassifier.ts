@@ -234,15 +234,19 @@ function applyBatchNorm(input: Float32Array, layer: BatchNormLayerRuntime): Floa
 
 let cachedPromise: Promise<AlphabetClassifier> | null = null;
 
+const MODEL_VERSION = "v2";
+const DEFAULT_SHARD_PATH = "group1-shard1of1.bin";
+
 /**
  * Load and cache the BISINDO TF.js classifier from `/models/bisindo/`.
  */
 export function loadAlphabetClassifier(basePath = "/models/bisindo"): Promise<AlphabetClassifier> {
   if (!cachedPromise || basePath !== "/models/bisindo") {
     const promise = (async (): Promise<AlphabetClassifier> => {
-      const [modelRes, labelsRes] = await Promise.all([
-        fetch(`${basePath}/model.json`, { cache: "no-cache" }),
-        fetch(`${basePath}/labels.json`, { cache: "no-cache" }),
+      const [modelRes, labelsRes, prefetchedShardRes] = await Promise.all([
+        fetch(`${basePath}/model.json?v=${MODEL_VERSION}`),
+        fetch(`${basePath}/labels.json?v=${MODEL_VERSION}`),
+        fetch(`${basePath}/${DEFAULT_SHARD_PATH}?v=${MODEL_VERSION}`),
       ]);
       if (!modelRes.ok) {
         throw new Error(`Failed to fetch model.json (${modelRes.status})`);
@@ -251,14 +255,20 @@ export function loadAlphabetClassifier(basePath = "/models/bisindo"): Promise<Al
         throw new Error(`Failed to fetch labels.json (${labelsRes.status})`);
       }
 
-      const modelJson = (await modelRes.json()) as TfjsModelJson;
-      const labels = (await labelsRes.json()) as string[];
+      const [modelJson, labels] = (await Promise.all([
+        modelRes.json(),
+        labelsRes.json(),
+      ])) as [TfjsModelJson, string[]];
       const manifest = modelJson.weightsManifest[0];
       if (!manifest || manifest.paths.length === 0) {
         throw new Error("Invalid TF.js weightsManifest in model.json");
       }
 
-      const shardRes = await fetch(`${basePath}/${manifest.paths[0]}`, { cache: "no-cache" });
+      const shardPath = manifest.paths[0];
+      let shardRes = prefetchedShardRes;
+      if (shardPath !== DEFAULT_SHARD_PATH || !prefetchedShardRes.ok) {
+        shardRes = await fetch(`${basePath}/${shardPath}?v=${MODEL_VERSION}`);
+      }
       if (!shardRes.ok) {
         throw new Error(`Failed to fetch weights shard (${shardRes.status})`);
       }

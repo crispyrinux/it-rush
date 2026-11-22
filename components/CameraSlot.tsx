@@ -6,6 +6,7 @@ import { speak } from "@/lib/audio";
 import { handsOf } from "@/lib/bisindo";
 import { loadAlphabetClassifier, type AlphabetClassifier } from "@/lib/cv/alphabetClassifier";
 import { detectVideoHands, drawHandLandmarks, loadHandLandmarker } from "@/lib/cv/handLandmarkerClient";
+import { subscribeModelProgress } from "@/lib/cv/mediapipeLoader";
 import {
   extractBisindo222Features,
   extractBisindo86Features,
@@ -60,6 +61,8 @@ export default function CameraSlot({ letter }: { letter: string }) {
   const [mode, setMode] = useState<VideoMode>("idle");
   const [simLetter, setSimLetter] = useState<string>(letter);
   const [isLoadingEngine, setIsLoadingEngine] = useState(false);
+  const [modelProgress, setModelProgress] = useState(0);
+  const [hasLiveStream, setHasLiveStream] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [showLandmarks, setShowLandmarks] = useState(data.settings.showLandmarks);
   const [detectedHands, setDetectedHands] = useState(0);
@@ -114,6 +117,10 @@ export default function CameraSlot({ letter }: { letter: string }) {
     };
   }, [simLetter]);
 
+  useEffect(() => {
+    return subscribeModelProgress("hand", setModelProgress);
+  }, []);
+
   const stopAll = useCallback(() => {
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
@@ -131,6 +138,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
     }
     validatorRef.current.reset();
     celebratedRef.current = false;
+    setHasLiveStream(false);
     setDetectedHands(0);
     setHoldState(EMPTY_HOLD_STATE);
     setJustCompleted(false);
@@ -285,11 +293,11 @@ export default function CameraSlot({ letter }: { letter: string }) {
     setMode("webcam");
 
     try {
-      await ensureAiEngine();
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error("Browser ini tidak mendukung akses kamera.");
       }
 
+      const enginePromise = ensureAiEngine();
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
         audio: false,
@@ -305,6 +313,10 @@ export default function CameraSlot({ letter }: { letter: string }) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      setHasLiveStream(true);
+
+      await enginePromise;
+      if (!isMountedRef.current) return;
       startDetectionLoop("webcam");
     } catch (err) {
       stopAll();
@@ -438,13 +450,35 @@ export default function CameraSlot({ letter }: { letter: string }) {
           </div>
         )}
 
-        {isLoadingEngine && (
+        {isLoadingEngine && mode === "webcam" && hasLiveStream && (
+          <div className="pointer-events-none absolute inset-x-3 sm:inset-x-4 bottom-2.5 sm:bottom-4 flex flex-col items-center gap-1.5 rounded-xl border border-white/25 bg-ink/85 px-3 py-2 text-center backdrop-blur-sm">
+            <p className="text-xs font-semibold text-white">
+              Menyiapkan model AI... {Math.round(modelProgress * 100)}%
+            </p>
+            <div className="h-1.5 w-full max-w-[200px] overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-sun transition-all duration-150"
+                style={{ width: `${Math.round(modelProgress * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {isLoadingEngine && !(mode === "webcam" && hasLiveStream) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 sm:gap-3 bg-ink/90 p-4 sm:p-6 text-center">
             <div
               className="h-8 w-8 sm:h-10 sm:w-10 animate-spin rounded-full border-4 border-sun border-t-transparent"
               aria-hidden="true"
             />
-            <p className="font-display text-sm sm:text-lg font-semibold">Memuat model AI MediaPipe &amp; BISINDO...</p>
+            <p className="font-display text-sm sm:text-lg font-semibold">
+              Memuat model AI MediaPipe &amp; BISINDO... {Math.round(modelProgress * 100)}%
+            </p>
+            <div className="h-2 w-48 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-sun transition-all duration-150"
+                style={{ width: `${Math.round(modelProgress * 100)}%` }}
+              />
+            </div>
             <p className="text-xs sm:text-sm text-white/80">Semua pemrosesan berjalan langsung di browser perangkatmu.</p>
           </div>
         )}

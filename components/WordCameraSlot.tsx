@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { speak } from "@/lib/audio";
 import { WORD_ITEMS, type WordItem } from "@/lib/bisindo";
 import { detectVideoHands, drawHandLandmarks, loadHandLandmarker } from "@/lib/cv/handLandmarkerClient";
+import { subscribeModelProgress } from "@/lib/cv/mediapipeLoader";
 import type { NormalizedLandmark2D } from "@/lib/cv/normalizeLandmarks";
 import {
   detectVideoPose,
@@ -65,6 +66,9 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
   const { data, markWordLearned } = useProgress();
   const [mode, setMode] = useState<SlotMode>("idle");
   const [status, setStatus] = useState<SlotStatus>("idle");
+  const [hasLiveStream, setHasLiveStream] = useState<boolean>(false);
+  const [handLoadProgress, setHandLoadProgress] = useState<number>(0);
+  const [poseLoadProgress, setPoseLoadProgress] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showLandmarks, setShowLandmarks] = useState<boolean>(data.settings.showLandmarks);
   const [simSampleWord, setSimSampleWord] = useState<string>(word.id);
@@ -97,6 +101,15 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
     audioEnabledRef.current = data.settings.audioEnabled;
   }, [data.settings.audioEnabled]);
 
+  useEffect(() => {
+    const unsubHand = subscribeModelProgress("hand", setHandLoadProgress);
+    const unsubPose = subscribeModelProgress("pose", setPoseLoadProgress);
+    return () => {
+      unsubHand();
+      unsubPose();
+    };
+  }, []);
+
   const stopMediaStream = useCallback(() => {
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) {
@@ -107,6 +120,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+    setHasLiveStream(false);
   }, []);
 
   const resetPracticeState = useCallback(() => {
@@ -185,29 +199,41 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
           throw new Error("Peramban ini belum mendukung akses kamera secara langsung.");
         }
 
-        const [handLandmarker, poseLandmarker, classifier, stream] = await Promise.all([
+        const modelsPromise = Promise.all([
           loadHandLandmarker(),
           loadPoseLandmarker(),
           loadWordClassifier(),
-          navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-            audio: false,
-          }),
         ]);
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          audio: false,
+        });
 
         if (cancelled) {
           for (const track of stream.getTracks()) track.stop();
           return;
         }
 
-        classifierRef.current = classifier;
         streamRef.current = stream;
-
         const videoEl = videoRef.current;
-        if (!videoEl) return;
+        if (!videoEl) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
         videoEl.srcObject = stream;
         await videoEl.play();
+        if (cancelled) {
+          for (const track of stream.getTracks()) track.stop();
+          return;
+        }
+        setHasLiveStream(true);
+
+        const [handLandmarker, poseLandmarker, classifier] = await modelsPromise;
+
         if (cancelled) return;
+
+        classifierRef.current = classifier;
 
         lastVideoTimeRef.current = -1;
         setStatus("ready");
@@ -514,13 +540,35 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
           className="pointer-events-none absolute inset-0 h-full w-full"
         />
 
-        {status === "loading" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-ink/85 p-4 text-center text-white">
+        {status === "loading" && mode === "webcam" && hasLiveStream && (
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-col items-center gap-1.5 rounded-xl border border-white/25 bg-ink/85 px-3 py-2 text-center backdrop-blur-sm">
+            <p className="text-xs font-semibold text-white">
+              Menyiapkan AI tangan &amp; pose... {Math.round(((handLoadProgress + poseLoadProgress) / 2) * 100)}%
+            </p>
+            <div className="h-1.5 w-full max-w-[200px] overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-sun transition-all duration-150"
+                style={{ width: `${Math.round(((handLoadProgress + poseLoadProgress) / 2) * 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {status === "loading" && !(mode === "webcam" && hasLiveStream) && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/85 p-4 text-center text-white">
             <p className="font-semibold">
               {mode === "webcam"
-                ? "Memuat kamera, pelacak tangan, pose, dan model kata BISINDO..."
+                ? `Memuat kamera, pelacak tangan, pose & model kata... ${Math.round(((handLoadProgress + poseLoadProgress) / 2) * 100)}%`
                 : "Memuat model kata BISINDO dan animasi rangka..."}
             </p>
+            {mode === "webcam" && (
+              <div className="h-2 w-48 overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-sun transition-all duration-150"
+                  style={{ width: `${Math.round(((handLoadProgress + poseLoadProgress) / 2) * 100)}%` }}
+                />
+              </div>
+            )}
           </div>
         )}
 

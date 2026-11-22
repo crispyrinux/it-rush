@@ -3,14 +3,12 @@
  */
 
 import type { PoseLandmarker as PoseLandmarkerType, PoseLandmarkerResult } from "@mediapipe/tasks-vision";
+import {
+  fetchCachedModelBuffer,
+  getVisionFileset,
+  resolvePoseModelUrl,
+} from "./mediapipeLoader";
 import type { NormalizedLandmark2D } from "./normalizeLandmarks";
-
-const LOCAL_WASM_BASE = "/models/mediapipe/wasm";
-const LOCAL_POSE_MODEL = "/models/mediapipe/pose_landmarker_lite.task";
-
-const CDN_WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm";
-const CDN_POSE_MODEL =
-  "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
 
 // Order matches src/bisindo/word_level.py POSE_ANCHOR_IDX:
 // [0:nose, 1:L_shoulder(11), 2:R_shoulder(12), 3:L_ear(7), 4:R_ear(8), 5:L_elbow(13), 6:R_elbow(14)]
@@ -26,32 +24,60 @@ const ANCHOR_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [
 
 let posePromise: Promise<PoseLandmarkerType> | null = null;
 
-async function createPoseWithSource(
-  wasmBase: string,
-  modelPath: string,
-): Promise<PoseLandmarkerType> {
-  const { FilesetResolver, PoseLandmarker } = await import("@mediapipe/tasks-vision");
-  const fileset = await FilesetResolver.forVisionTasks(wasmBase);
+async function createPoseLandmarker(): Promise<PoseLandmarkerType> {
+  const [{ PoseLandmarker }, modelUrl] = await Promise.all([
+    import("@mediapipe/tasks-vision"),
+    resolvePoseModelUrl(),
+  ]);
+
+  let buffer: Uint8Array | null = null;
+  let fileset: Awaited<ReturnType<typeof getVisionFileset>>;
+
+  try {
+    [fileset, buffer] = await Promise.all([
+      getVisionFileset(),
+      fetchCachedModelBuffer("pose", modelUrl),
+    ]);
+  } catch {
+    fileset = await getVisionFileset();
+  }
+
+  const commonOptions = {
+    runningMode: "VIDEO" as const,
+    numPoses: 1,
+    minPoseDetectionConfidence: 0.45,
+    minPosePresenceConfidence: 0.45,
+    minTrackingConfidence: 0.45,
+    outputSegmentationMasks: false,
+  };
+
+  if (buffer) {
+    try {
+      return await PoseLandmarker.createFromOptions(fileset, {
+        ...commonOptions,
+        baseOptions: { modelAssetBuffer: buffer.slice(), delegate: "GPU" },
+      });
+    } catch {
+      try {
+        return await PoseLandmarker.createFromOptions(fileset, {
+          ...commonOptions,
+          baseOptions: { modelAssetBuffer: buffer.slice(), delegate: "CPU" },
+        });
+      } catch {
+        // Fallback to URL path if buffer creation fails
+      }
+    }
+  }
 
   try {
     return await PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: modelPath, delegate: "GPU" },
-      runningMode: "VIDEO",
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.45,
-      minPosePresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
-      outputSegmentationMasks: false,
+      ...commonOptions,
+      baseOptions: { modelAssetPath: modelUrl, delegate: "GPU" },
     });
   } catch {
     return await PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: modelPath, delegate: "CPU" },
-      runningMode: "VIDEO",
-      numPoses: 1,
-      minPoseDetectionConfidence: 0.45,
-      minPosePresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
-      outputSegmentationMasks: false,
+      ...commonOptions,
+      baseOptions: { modelAssetPath: modelUrl, delegate: "CPU" },
     });
   }
 }
@@ -61,13 +87,7 @@ async function createPoseWithSource(
  */
 export function loadPoseLandmarker(): Promise<PoseLandmarkerType> {
   if (!posePromise) {
-    posePromise = (async () => {
-      try {
-        return await createPoseWithSource(LOCAL_WASM_BASE, LOCAL_POSE_MODEL);
-      } catch {
-        return await createPoseWithSource(CDN_WASM_BASE, CDN_POSE_MODEL);
-      }
-    })().catch((err) => {
+    posePromise = createPoseLandmarker().catch((err) => {
       posePromise = null;
       throw err;
     });

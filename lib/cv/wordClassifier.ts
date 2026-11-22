@@ -413,6 +413,8 @@ function runFfnBlock(
 
 let cachedWordPromise: Promise<WordClassifier> | null = null;
 
+const WL_MODEL_VERSION = "pantai-v1";
+
 /**
  * Load and cache the WL-BISINDO 8-word Conformer classifier.
  */
@@ -420,9 +422,9 @@ export function loadWordClassifier(basePath = "/models/bisindo"): Promise<WordCl
   if (!cachedWordPromise || basePath !== "/models/bisindo") {
     const promise = (async (): Promise<WordClassifier> => {
       const [manifestRes, labelsRes, weightsRes] = await Promise.all([
-        fetch(`${basePath}/wl_model.json`, { cache: "no-cache" }),
-        fetch(`${basePath}/bisindo_wl_labels.json`, { cache: "no-cache" }),
-        fetch(`${basePath}/wl_weights.bin`, { cache: "no-cache" }),
+        fetch(`${basePath}/wl_model.json?v=${WL_MODEL_VERSION}`),
+        fetch(`${basePath}/bisindo_wl_labels.json?v=${WL_MODEL_VERSION}`),
+        fetch(`${basePath}/wl_weights.bin?v=${WL_MODEL_VERSION}`),
       ]);
 
       if (!manifestRes.ok) throw new Error(`Failed to fetch wl_model.json (${manifestRes.status})`);

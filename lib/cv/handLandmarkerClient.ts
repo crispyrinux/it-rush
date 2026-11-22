@@ -3,14 +3,12 @@
  */
 
 import type { HandLandmarker as HandLandmarkerType, HandLandmarkerResult } from "@mediapipe/tasks-vision";
+import {
+  fetchCachedModelBuffer,
+  getVisionFileset,
+  resolveHandModelUrl,
+} from "./mediapipeLoader";
 import type { NormalizedLandmark2D } from "./normalizeLandmarks";
-
-const LOCAL_WASM_BASE = "/models/mediapipe/wasm";
-const LOCAL_MODEL_PATH = "/models/mediapipe/hand_landmarker.task";
-
-const CDN_WASM_BASE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm";
-const CDN_MODEL_PATH =
-  "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 const HAND_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [
   [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
@@ -21,55 +19,85 @@ const HAND_CONNECTIONS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 let landmarkerPromise: Promise<HandLandmarkerType> | null = null;
+let handLandmarkerReady = false;
 
-async function createLandmarkerWithSource(
-  wasmBase: string,
-  modelPath: string,
-): Promise<HandLandmarkerType> {
-  const { FilesetResolver, HandLandmarker } = await import("@mediapipe/tasks-vision");
-  const fileset = await FilesetResolver.forVisionTasks(wasmBase);
+export function isHandLandmarkerReady(): boolean {
+  return handLandmarkerReady;
+}
 
-  const baseOptions = {
-    modelAssetPath: modelPath,
+async function createHandLandmarker(): Promise<HandLandmarkerType> {
+  const [{ HandLandmarker }, modelUrl] = await Promise.all([
+    import("@mediapipe/tasks-vision"),
+    resolveHandModelUrl(),
+  ]);
+
+  let buffer: Uint8Array | null = null;
+  let fileset: Awaited<ReturnType<typeof getVisionFileset>>;
+
+  try {
+    [fileset, buffer] = await Promise.all([
+      getVisionFileset(),
+      fetchCachedModelBuffer("hand", modelUrl),
+    ]);
+  } catch {
+    fileset = await getVisionFileset();
+  }
+
+  const commonOptions = {
+    runningMode: "VIDEO" as const,
+    numHands: 2,
+    minHandDetectionConfidence: 0.3,
+    minHandPresenceConfidence: 0.3,
+    minTrackingConfidence: 0.3,
   };
+
+  if (buffer) {
+    try {
+      return await HandLandmarker.createFromOptions(fileset, {
+        ...commonOptions,
+        baseOptions: { modelAssetBuffer: buffer.slice(), delegate: "GPU" },
+      });
+    } catch {
+      try {
+        return await HandLandmarker.createFromOptions(fileset, {
+          ...commonOptions,
+          baseOptions: { modelAssetBuffer: buffer.slice(), delegate: "CPU" },
+        });
+      } catch {
+        // Fallback to URL path if buffer creation fails
+      }
+    }
+  }
 
   try {
     return await HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { ...baseOptions, delegate: "GPU" },
-      runningMode: "VIDEO",
-      numHands: 2,
-      minHandDetectionConfidence: 0.3,
-      minHandPresenceConfidence: 0.3,
-      minTrackingConfidence: 0.3,
+      ...commonOptions,
+      baseOptions: { modelAssetPath: modelUrl, delegate: "GPU" },
     });
   } catch {
     return await HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { ...baseOptions, delegate: "CPU" },
-      runningMode: "VIDEO",
-      numHands: 2,
-      minHandDetectionConfidence: 0.3,
-      minHandPresenceConfidence: 0.3,
-      minTrackingConfidence: 0.3,
+      ...commonOptions,
+      baseOptions: { modelAssetPath: modelUrl, delegate: "CPU" },
     });
   }
 }
 
 /**
  * Load and cache MediaPipe HandLandmarker configured for 2-hand BISINDO detection.
- * Prefers local `/models/mediapipe/` assets and falls back to official CDNs.
+ * Uses shared FilesetResolver and browser Cache API for fast cold and repeat loads.
  */
 export function loadHandLandmarker(): Promise<HandLandmarkerType> {
   if (!landmarkerPromise) {
-    landmarkerPromise = (async () => {
-      try {
-        return await createLandmarkerWithSource(LOCAL_WASM_BASE, LOCAL_MODEL_PATH);
-      } catch {
-        return await createLandmarkerWithSource(CDN_WASM_BASE, CDN_MODEL_PATH);
-      }
-    })().catch((err) => {
-      landmarkerPromise = null;
-      throw err;
-    });
+    landmarkerPromise = createHandLandmarker()
+      .then((instance) => {
+        handLandmarkerReady = true;
+        return instance;
+      })
+      .catch((err) => {
+        handLandmarkerReady = false;
+        landmarkerPromise = null;
+        throw err;
+      });
   }
   return landmarkerPromise;
 }

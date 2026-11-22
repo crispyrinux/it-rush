@@ -12,6 +12,11 @@ import { UNITS, WORD_ITEMS, handsOf } from "@/lib/bisindo";
 import { speak } from "@/lib/audio";
 import { useProgress } from "@/lib/storage/useProgress";
 import { fetchSupabaseWordDemos, type WordDemoRow } from "@/lib/supabase/client";
+import { loadAlphabetClassifier } from "@/lib/cv/alphabetClassifier";
+import { loadHandLandmarker } from "@/lib/cv/handLandmarkerClient";
+import { shouldBackgroundPrefetch } from "@/lib/cv/mediapipeLoader";
+import { loadPoseLandmarker } from "@/lib/cv/poseLandmarkerClient";
+import { loadWordClassifier } from "@/lib/cv/wordClassifier";
 import { Volume2, Camera, BookOpen, CheckCircle, Check, Globe, Shield, HelpCircle, Eye, type Icon } from "react-feather";
 
 type Mode = "learn" | "view" | "guess";
@@ -200,6 +205,40 @@ export default function BisindoPage() {
       cancelled = true;
     };
   }, []);
+
+  // Warm up alphabet CV engine in the background when the browser is idle.
+  useEffect(() => {
+    if (!shouldBackgroundPrefetch()) return;
+
+    const prefetchAlphabet = () => {
+      void loadAlphabetClassifier().catch(() => {});
+      void loadHandLandmarker().catch(() => {});
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof win.requestIdleCallback === "function") {
+      const idleId = win.requestIdleCallback(prefetchAlphabet, { timeout: 2500 });
+      return () => {
+        win.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timerId = window.setTimeout(prefetchAlphabet, 1000);
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, []);
+
+  // Warm up word-level pose + Conformer models when user selects a dynamic word.
+  useEffect(() => {
+    if (selState.kind !== "word" || !shouldBackgroundPrefetch()) return;
+    void loadWordClassifier().catch(() => {});
+    void loadPoseLandmarker().catch(() => {});
+  }, [selState.kind]);
 
   const sel = selState.kind === "letter" ? selState.value : "";
 
