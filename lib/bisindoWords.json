@@ -1,0 +1,82 @@
+{
+  "modelVersion": "custom-20261122-231918",
+  "words": [
+    {
+      "id": "alam",
+      "title": "Alam",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Alam\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/alam.mp4"
+    },
+    {
+      "id": "ancaman",
+      "title": "Ancaman",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Ancaman\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/ancaman.mp4"
+    },
+    {
+      "id": "bencana",
+      "title": "Bencana",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Bencana\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/bencana.mp4"
+    },
+    {
+      "id": "dampak",
+      "title": "Dampak",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Dampak\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/dampak.mp4"
+    },
+    {
+      "id": "degradasi",
+      "title": "Degradasi",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Degradasi\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/degradasi.mp4"
+    },
+    {
+      "id": "iklim",
+      "title": "Iklim",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Iklim\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/iklim.mp4"
+    },
+    {
+      "id": "lingkungan",
+      "title": "Lingkungan",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Lingkungan\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/lingkungan.mp4"
+    },
+    {
+      "id": "mitigasi",
+      "title": "Mitigasi",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Mitigasi\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/mitigasi.mp4"
+    },
+    {
+      "id": "pemulihan",
+      "title": "Pemulihan",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Pemulihan\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/pemulihan.mp4"
+    },
+    {
+      "id": "perubahan",
+      "title": "Perubahan",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Perubahan\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/perubahan.mp4"
+    },
+    {
+      "id": "sumber_daya",
+      "title": "Sumber Daya",
+      "hands": 2,
+      "guide": "Amati animasi contoh kata \"Sumber Daya\", lalu praktikkan gerakan dengan kedua tangan di depan kamera selama 2,5 detik.",
+      "localVideoPath": "/videos/bisindo/sumber_daya.mp4"
+    }
+  ]
+}

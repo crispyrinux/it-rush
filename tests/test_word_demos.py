@@ -28,7 +28,7 @@ def test_word_demo_specs_match_wl_labels_and_exclude_air():
     spec_ids = [spec.word_id for spec in WORD_DEMO_SPECS]
 
     assert spec_ids == labels
-    assert "pantai" in spec_ids
+    assert len(spec_ids) >= 2
     assert "air" not in spec_ids
 
 
@@ -50,6 +50,17 @@ def test_discover_source_videos_selects_exact_or_largest_candidate(tmp_path: Pat
     assert found["belajar"] == tmp_path / "belajar" / "belajar.mp4"
     assert found["pantai"] == tmp_path / "pantai" / "clip_best.mp4"
     assert "air" not in found
+
+
+def test_discover_source_videos_supports_flat_files(tmp_path: Path):
+    (tmp_path / "ombak.mp4").write_bytes(b"exact")
+    (tmp_path / "ombak__2.mp4").write_bytes(b"larger-take")
+    (tmp_path / "penyu__a.mp4").write_bytes(b"small")
+    (tmp_path / "penyu__b.mp4").write_bytes(b"much-larger")
+
+    found = discover_source_videos(tmp_path, word_ids=["ombak", "penyu"])
+    assert found["ombak"] == tmp_path / "ombak.mp4"
+    assert found["penyu"] == tmp_path / "penyu__b.mp4"
 
 
 def test_build_ffmpeg_command_mp4_portrait_applies_crop_and_faststart(tmp_path: Path):

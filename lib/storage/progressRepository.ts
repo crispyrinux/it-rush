@@ -1,4 +1,5 @@
 import { evaluateBadges } from "@/lib/badges";
+import { WORD_ITEMS } from "@/lib/bisindo";
 import {
   fetchSupabaseLeaderboard,
   fetchSupabaseProfile,
@@ -612,7 +613,7 @@ export const progressRepository = {
 
       const demoPresetBisindo: ProgressData["bisindo"] = {
         learnedLetters: ["A", "E", "I", "O", "U", "B", "D", "F", "H", "K", "C", "L"],
-        learnedWords: ["saya", "belajar", "terima_kasih"],
+        learnedWords: WORD_ITEMS.slice(0, 3).map((w) => w.id),
         practiceSessionsCompleted: 2,
         guessTheSignBestScore: 90,
       };

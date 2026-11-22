@@ -26,6 +26,8 @@ export interface BadgeDefinition {
 }
 
 const VOWELS = ["A", "E", "I", "O", "U"];
+const ACTIVE_WORD_IDS = new Set(WORD_ITEMS.map((w) => w.id));
+const WORD_BADGE_TARGET = Math.min(3, WORD_ITEMS.length);
 
 export const BADGE_DEFINITIONS: BadgeDefinition[] = [
   {
@@ -68,12 +70,18 @@ export const BADGE_DEFINITIONS: BadgeDefinition[] = [
     id: "word_explorer",
     title: "Penjelajah Kosakata",
     description: "Melangkah lebih jauh dari sekadar ejaan jari menuju kosakata gerakan dinamis.",
-    requirementText: `Kuasi minimal 3 dari ${WORD_ITEMS.length} kosakata dinamis BISINDO`,
+    requirementText: `Kuasi minimal ${WORD_BADGE_TARGET} dari ${WORD_ITEMS.length} kosakata dinamis BISINDO`,
     color: "bg-sky",
     iconName: "message",
     evaluate: (data) => {
-      const words = (data.bisindo.learnedWords ?? []).length;
-      return { unlocked: words >= 3, current: Math.min(words, 3), target: 3 };
+      const words = (data.bisindo.learnedWords ?? []).filter((id) =>
+        ACTIVE_WORD_IDS.has(id)
+      ).length;
+      return {
+        unlocked: WORD_BADGE_TARGET > 0 && words >= WORD_BADGE_TARGET,
+        current: Math.min(words, WORD_BADGE_TARGET),
+        target: Math.max(1, WORD_BADGE_TARGET),
+      };
     },
   },
   {

@@ -435,6 +435,50 @@ def append_wl_sequences_npz(
     return len(X_all)
 
 
+def _detect_final_fc_tensor_ids(interpreter: tf.lite.Interpreter) -> tuple[int, int, int]:
+    """Return `(gap_idx, weight_idx, bias_idx)` for the final classifier FC op."""
+    ops = interpreter._get_ops_details()
+    fc_ops = [op for op in ops if op["op_name"] == "FULLY_CONNECTED"]
+    if not fc_ops:
+        raise ValueError("No FULLY_CONNECTED ops found in TFLite model")
+    final_fc = fc_ops[-1]
+    gap_idx = int(final_fc["inputs"][0])
+    weight_idx = int(final_fc["inputs"][1])
+    bias_idx = int(final_fc["inputs"][2]) if len(final_fc["inputs"]) > 2 else -1
+    return gap_idx, weight_idx, bias_idx
+
+
+def _patch_tflite_head_bytes(
+    base_tflite_path: str | Path,
+    output_tflite_path: str | Path,
+    w0_tflite: np.ndarray,
+    b0_tflite: np.ndarray,
+    w_new_tflite: np.ndarray,
+    b_new_tflite: np.ndarray,
+) -> Path:
+    """Replace the classifier head weight/bias bytes inside a TFLite flatbuffer."""
+    raw_bytes = Path(base_tflite_path).read_bytes()
+    w_new_bytes = np.asarray(w_new_tflite, dtype="<f4").tobytes()
+    b_new_bytes = np.asarray(b_new_tflite, dtype="<f4").tobytes()
+    old_w_bytes = np.asarray(w0_tflite, dtype="<f4").tobytes()
+    old_b_bytes = np.asarray(b0_tflite, dtype="<f4").tobytes()
+
+    if raw_bytes.count(old_w_bytes) != 1 or raw_bytes.count(old_b_bytes) != 1:
+        raise RuntimeError(
+            "Could not uniquely locate WL classifier head weights inside TFLite binary."
+        )
+
+    w_off = raw_bytes.index(old_w_bytes)
+    b_off = raw_bytes.index(old_b_bytes)
+    patched = bytearray(raw_bytes)
+    patched[w_off : w_off + len(old_w_bytes)] = w_new_bytes
+    patched[b_off : b_off + len(old_b_bytes)] = b_new_bytes
+    out_path = Path(output_tflite_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(bytes(patched))
+    return out_path
+
+
 def extract_wl_backbone_embeddings(
     tflite_path: str | Path,
     X_seq: np.ndarray,
@@ -453,15 +497,7 @@ def extract_wl_backbone_embeddings(
     )
     interpreter.allocate_tensors()
 
-    ops = interpreter._get_ops_details()
-    fc_ops = [op for op in ops if op["op_name"] == "FULLY_CONNECTED"]
-    if not fc_ops:
-        raise ValueError(f"No FULLY_CONNECTED ops found in {tflite_path}")
-
-    final_fc = fc_ops[-1]
-    gap_idx = int(final_fc["inputs"][0])
-    weight_idx = int(final_fc["inputs"][1])
-    bias_idx = int(final_fc["inputs"][2]) if len(final_fc["inputs"]) > 2 else -1
+    gap_idx, weight_idx, bias_idx = _detect_final_fc_tensor_ids(interpreter)
 
     in_idx = interpreter.get_input_details()[0]["index"]
     w_head = interpreter.get_tensor(weight_idx).astype(np.float32).copy()
@@ -612,24 +648,16 @@ def finetune_wl_head_in_place(
             w_new_keras[:, c] = w0_keras[:, c]
             b_new[c] = b0_init[c]
 
-    w_new_bytes = w_new_keras.T.astype("<f4").tobytes()
-    b_new_bytes = b_new.astype("<f4").tobytes()
-    old_w_bytes = w0_tflite.astype("<f4").tobytes()
-    old_b_bytes = b0_tflite.astype("<f4").tobytes()
-
-    if raw_bytes.count(old_w_bytes) != 1 or raw_bytes.count(old_b_bytes) != 1:
-        raise RuntimeError(
-            "Could not uniquely locate WL classifier head weights inside TFLite binary."
-        )
-
-    w_off = raw_bytes.index(old_w_bytes)
-    b_off = raw_bytes.index(old_b_bytes)
-    patched = bytearray(raw_bytes)
-    patched[w_off : w_off + len(old_w_bytes)] = w_new_bytes
-    patched[b_off : b_off + len(old_b_bytes)] = b_new_bytes
-    out_path = Path(output_tflite_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(bytes(patched))
+    w_new_tflite = w_new_keras.T.astype(np.float32)
+    b_new_tflite = b_new.astype(np.float32)
+    out_path = _patch_tflite_head_bytes(
+        base_tflite_path,
+        output_tflite_path,
+        w0_tflite,
+        b0_tflite,
+        w_new_tflite,
+        b_new_tflite,
+    )
 
     # Evaluate patched TFLite model end-to-end on input sequences
     eval_interp = tf.lite.Interpreter(model_path=str(out_path))
@@ -646,10 +674,128 @@ def finetune_wl_head_in_place(
     return float(correct / len(y_idx))
 
 
+def train_wl_custom_head(
+    base_tflite_path: str | Path,
+    classes: Sequence[str],
+    X_seq: np.ndarray,
+    y_labels: np.ndarray,
+    *,
+    epochs: int = 80,
+    learning_rate: float = 3e-3,
+    l2_reg: float = 1e-4,
+    seed: int = 42,
+    patch_tflite_path: str | Path | None = None,
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Train a fresh WL classifier head for an arbitrary number of word classes (`N >= 2`)."""
+    from sklearn.utils.class_weight import compute_class_weight
+
+    class_list = [str(c) for c in classes]
+    if len(class_list) < 2:
+        raise ValueError(f"At least 2 word classes are required, got {len(class_list)}")
+    if len(set(class_list)) != len(class_list):
+        raise ValueError(f"Duplicate class labels provided: {class_list}")
+    if len(X_seq) == 0:
+        raise ValueError("X_seq must contain at least one sequence")
+
+    label_to_idx = {label: idx for idx, label in enumerate(class_list)}
+    y_str = [str(lbl) for lbl in y_labels]
+    unknown = sorted({lbl for lbl in y_str if lbl not in label_to_idx})
+    if unknown:
+        raise ValueError(f"Unknown WL class labels: {unknown}. Allowed: {class_list}")
+    y_idx = np.array([label_to_idx[lbl] for lbl in y_str], dtype=np.int64)
+
+    embeddings, w0_tflite, b0_tflite = extract_wl_backbone_embeddings(base_tflite_path, X_seq)
+    emb_dim = embeddings.shape[1]
+
+    tf.keras.utils.set_random_seed(seed)
+    inp = tf.keras.Input(shape=(emb_dim,), dtype=tf.float32)
+    reg = tf.keras.regularizers.l2(float(l2_reg)) if l2_reg > 0.0 else None
+    dense = tf.keras.layers.Dense(
+        units=len(class_list),
+        activation="softmax",
+        use_bias=True,
+        kernel_regularizer=reg,
+    )
+    head_model = tf.keras.Model(inputs=inp, outputs=dense(inp))
+    head_model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+    )
+
+    unique_cls = np.unique(y_idx)
+    weights = compute_class_weight("balanced", classes=unique_cls, y=y_idx)
+    class_weight = {int(c): float(w) for c, w in zip(unique_cls, weights)}
+
+    head_model.fit(
+        embeddings,
+        y_idx,
+        epochs=epochs,
+        batch_size=min(16, len(embeddings)),
+        class_weight=class_weight,
+        verbose=1,
+    )
+
+    w_new_keras, b_new = dense.get_weights()
+    w_head = w_new_keras.T.astype(np.float32).copy()
+    b_head = b_new.astype(np.float32).copy()
+
+    logits = embeddings @ w_head.T + b_head
+    preds = np.argmax(logits, axis=1)
+    acc = float(np.mean(preds == y_idx))
+
+    if patch_tflite_path is not None and len(class_list) == w0_tflite.shape[0]:
+        _patch_tflite_head_bytes(
+            base_tflite_path,
+            patch_tflite_path,
+            w0_tflite,
+            b0_tflite,
+            w_head,
+            b_head,
+        )
+
+    return w_head, b_head, acc
+
+
+def predict_wl_with_head(
+    base_tflite_path: str | Path,
+    X_seq: np.ndarray,
+    w_head: np.ndarray,
+    b_head: np.ndarray,
+    classes: Sequence[str],
+) -> list[list[WordPrediction]]:
+    """Run WL backbone + custom `(w_head, b_head)` inference for arbitrary class count."""
+    class_list = [str(c) for c in classes]
+    w_arr = np.asarray(w_head, dtype=np.float32)
+    b_arr = np.asarray(b_head, dtype=np.float32)
+    if w_arr.ndim != 2 or b_arr.ndim != 1 or w_arr.shape[0] != len(class_list) or b_arr.shape[0] != len(class_list):
+        raise ValueError(
+            f"Head shape mismatch for {len(class_list)} classes: w={w_arr.shape}, b={b_arr.shape}"
+        )
+
+    embeddings, _, _ = extract_wl_backbone_embeddings(base_tflite_path, X_seq)
+    logits = embeddings @ w_arr.T + b_arr
+
+    all_preds: list[list[WordPrediction]] = []
+    for row in logits:
+        shifted = row - float(np.max(row))
+        exps = np.exp(shifted)
+        probs = exps / max(float(np.sum(exps)), 1e-12)
+        preds = [
+            WordPrediction(word=class_list[i], confidence=float(probs[i]))
+            for i in range(len(class_list))
+        ]
+        preds.sort(key=lambda p: p.confidence, reverse=True)
+        all_preds.append(preds)
+    return all_preds
+
+
 def export_wl_browser_weights(
     tflite_path: str | Path,
     output_dir: str | Path,
     manifest_template_path: str | Path | None = None,
+    *,
+    head_override: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> tuple[Path, Path]:
     """Export WL TFLite constant tensors into `wl_model.json` and `wl_weights.bin`."""
     out_dir = Path(output_dir)
@@ -672,11 +818,34 @@ def export_wl_browser_weights(
     interp.allocate_tensors()
     details_by_id = {str(t["index"]): t for t in interp.get_tensor_details()}
 
+    override_map: dict[int, np.ndarray] = {}
+    if head_override is not None:
+        w_ovr, b_ovr = head_override
+        w_arr = np.asarray(w_ovr, dtype=np.float32)
+        b_arr = np.asarray(b_ovr, dtype=np.float32)
+        if w_arr.ndim != 2 or b_arr.ndim != 1 or w_arr.shape[0] != b_arr.shape[0]:
+            raise ValueError(f"Invalid head_override shapes: w={w_arr.shape}, b={b_arr.shape}")
+        _, weight_idx, bias_idx = _detect_final_fc_tensor_ids(interp)
+        if bias_idx < 0:
+            raise ValueError("Final FULLY_CONNECTED op has no bias tensor to override")
+        if str(weight_idx) not in manifest["tensors"] or str(bias_idx) not in manifest["tensors"]:
+            raise ValueError(
+                f"Detected head tensor IDs ({weight_idx}, {bias_idx}) missing from manifest template"
+            )
+        expected_emb_dim = int(interp.get_tensor(weight_idx).shape[1])
+        if w_arr.shape[1] != expected_emb_dim:
+            raise ValueError(
+                f"Expected head_override embedding dim {expected_emb_dim}, got {w_arr.shape[1]}"
+            )
+        override_map[weight_idx] = w_arr
+        override_map[bias_idx] = b_arr
+
     chunks: list[bytes] = []
     updated_tensors: dict[str, Any] = {}
     offset = 0
     for tid in sorted(manifest["tensors"], key=lambda x: int(x)):
-        arr = interp.get_tensor(int(tid))
+        tid_int = int(tid)
+        arr = override_map[tid_int] if tid_int in override_map else interp.get_tensor(tid_int)
         dtype_name = "int32" if np.issubdtype(arr.dtype, np.integer) else "float32"
         cast_arr = np.ascontiguousarray(arr, dtype=("<i4" if dtype_name == "int32" else "<f4"))
         raw = cast_arr.tobytes(order="C")

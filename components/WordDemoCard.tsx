@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Pause, Play, RefreshCw, Volume2 } from "react-feather";
-import type { WordItem } from "@/lib/bisindo";
+import { WORD_MODEL_VERSION, type WordItem } from "@/lib/bisindo";
 import type { WordDemoRow } from "@/lib/supabase/client";
 
 interface WordDemoCardProps {
@@ -13,10 +13,10 @@ interface WordDemoCardProps {
   onSpeak: () => void;
 }
 
-function isImageAnimation(demo: WordDemoRow): boolean {
-  const mime = demo.mime_type.toLowerCase();
-  const url = demo.video_url.toLowerCase();
-  return mime.startsWith("image/") || url.endsWith(".webp") || url.endsWith(".gif");
+function isImageAnimationUrl(url: string, mimeType?: string): boolean {
+  const mime = (mimeType ?? "").toLowerCase();
+  const cleanUrl = url.toLowerCase().split("?")[0];
+  return mime.startsWith("image/") || cleanUrl.endsWith(".webp") || cleanUrl.endsWith(".gif");
 }
 
 export default function WordDemoCard({
@@ -26,16 +26,18 @@ export default function WordDemoCard({
   isLoadingDemo,
   onSpeak,
 }: WordDemoCardProps) {
+  const [sourceIndex, setSourceIndex] = useState(0);
   const [mediaFailed, setMediaFailed] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
+    setSourceIndex(0);
     setMediaFailed(false);
     setRetryCount(0);
     setIsPlaying(true);
-  }, [word.id, demo?.video_url]);
+  }, [word.id, demo?.video_url, word.localVideoPath]);
 
   const togglePlayback = () => {
     const video = videoRef.current;
@@ -48,13 +50,34 @@ export default function WordDemoCard({
     }
   };
 
-  const isImgAnim = demo ? isImageAnimation(demo) : false;
-
-  const mediaUrl = demo?.video_url
-    ? retryCount > 0
-      ? `${demo.video_url}${demo.video_url.includes("?") ? "&" : "?"}retry=${retryCount}`
-      : demo.video_url
+  const localFallbackUrl = word.localVideoPath
+    ? `${word.localVideoPath}?v=${encodeURIComponent(WORD_MODEL_VERSION)}`
     : null;
+  const candidates = [demo?.video_url?.trim() || null, localFallbackUrl].filter(
+    (url, idx, arr): url is string => Boolean(url) && arr.indexOf(url) === idx,
+  );
+  const activeCandidate = candidates[sourceIndex] ?? null;
+  const isImgAnim = activeCandidate
+    ? isImageAnimationUrl(activeCandidate, sourceIndex === 0 ? demo?.mime_type : undefined)
+    : false;
+
+  const mediaUrl = activeCandidate
+    ? retryCount > 0
+      ? `${activeCandidate}${activeCandidate.includes("?") ? "&" : "?"}retry=${retryCount}`
+      : activeCandidate
+    : null;
+
+  const showLoadingSkeleton = isLoadingDemo && !demo?.video_url;
+
+  const handleMediaError = () => {
+    if (sourceIndex + 1 < candidates.length) {
+      setSourceIndex((prev) => prev + 1);
+      setRetryCount(0);
+      setIsPlaying(true);
+    } else {
+      setMediaFailed(true);
+    }
+  };
 
   return (
     <div
@@ -114,7 +137,7 @@ export default function WordDemoCard({
           )}
         </div>
 
-        {isLoadingDemo ? (
+        {showLoadingSkeleton ? (
           <div
             className="flex h-44 w-full animate-pulse items-center justify-center rounded-2xl border-2 border-ink bg-surface-secondary text-xs font-semibold text-ink/65 sm:h-48 lg:h-[clamp(10rem,24vh,14rem)]"
             role="status"
@@ -129,7 +152,7 @@ export default function WordDemoCard({
                 key={mediaUrl}
                 src={mediaUrl}
                 alt={`Animasi contoh gerakan BISINDO kata ${word.title}`}
-                onError={() => setMediaFailed(true)}
+                onError={handleMediaError}
                 className="h-44 w-full object-contain sm:h-48 lg:h-[clamp(10rem,24vh,14rem)]"
               />
             ) : (
@@ -146,7 +169,7 @@ export default function WordDemoCard({
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}
                 aria-label={`Video berulang contoh gerakan BISINDO kata ${word.title}`}
-                onError={() => setMediaFailed(true)}
+                onError={handleMediaError}
                 className="h-44 w-full cursor-pointer object-contain sm:h-48 lg:h-[clamp(10rem,24vh,14rem)]"
               />
             )}
@@ -156,13 +179,14 @@ export default function WordDemoCard({
             <p className="font-semibold text-ink">
               {mediaFailed
                 ? `Gagal memuat animasi contoh untuk kata ${word.title}.`
-                : `Animasi contoh kata ${word.title} belum tersedia di Supabase Storage.`}
+                : `Animasi contoh kata ${word.title} belum tersedia.`}
             </p>
             <p className="mt-1">{word.guide}</p>
             {mediaFailed && (
               <button
                 type="button"
                 onClick={() => {
+                  setSourceIndex(0);
                   setMediaFailed(false);
                   setRetryCount((prev) => prev + 1);
                 }}
