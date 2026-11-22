@@ -816,51 +816,35 @@ export default function WordCameraSlot({
         </div>
       )}
 
-      {/* 2. MAIN UPPER BOX: [ O rekam ] —————————— (LINE PROGRESS) & CAMERA FEED */}
-      <div className="overflow-hidden rounded-2xl border-2 border-ink bg-ink shadow-[3px_3px_0px_#1B1B3A]">
-        {/* REKAM & HORIZONTAL PROGRESS LINE (Fills out as user records) */}
-        <div className="flex items-center gap-2.5 border-b-2 border-ink bg-white px-3 py-2">
-          <button
-            type="button"
-            onClick={startRecording}
-            disabled={isRecording || status !== "ready"}
-            className={`btn !min-h-[34px] shrink-0 px-3.5 py-1 text-xs font-bold shadow-[2px_2px_0px_#1B1B3A] transition-all ${
-              isRecording
-                ? "bg-coral text-white animate-pulse"
-                : "bg-sun text-ink hover:bg-sun-light active:scale-95"
+      {/* 2. MAIN UPPER BOX: WEBCAM FEED WITH OVERLAPPING RECORD BUTTON */}
+      <div className="relative overflow-hidden rounded-2xl border-2 border-ink bg-ink shadow-[3px_3px_0px_#1B1B3A]">
+        {/* OVERLAPPING RECORD BUTTON (Top-Left inside Camera) */}
+        <button
+          type="button"
+          onClick={startRecording}
+          disabled={isRecording || status !== "ready"}
+          className={`btn absolute top-3 left-3 z-20 !min-h-[36px] px-3.5 py-1.5 text-xs font-bold border-2 border-ink shadow-[2px_2px_0px_#1B1B3A] transition-all ${
+            isRecording
+              ? "bg-coral text-white scale-105 shadow-none"
+              : "bg-sun text-ink hover:bg-sun-light active:scale-95"
+          }`}
+        >
+          <span
+            className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full ${
+              isRecording ? "bg-white animate-ping" : "bg-coral"
             }`}
-          >
-            <span
-              className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full ${
-                isRecording ? "bg-white animate-ping" : "bg-coral"
-              }`}
-            />
-            {isRecording
-              ? `Merekam... ${(recordProgress * 2.5).toFixed(1)}s`
-              : predictions.length > 0
-                ? "Ulangi Rekam"
-                : "Rekam"}
-          </button>
-
-          {/* HORIZONTAL PROGRESS LINE / TRACK */}
-          <div className="relative flex-1 h-3.5 rounded-full border-2 border-ink bg-paper overflow-hidden p-0.5">
-            <div
-              className="h-full rounded-full bg-mint transition-all duration-75 relative overflow-hidden"
-              style={{ width: `${Math.round(recordProgress * 100)}%` }}
-            >
-              {isRecording && (
-                <div className="absolute inset-0 bg-white/30 animate-pulse" />
-              )}
-            </div>
-          </div>
-
-          <span className="text-xs font-bold text-ink shrink-0 min-w-[36px] text-right font-mono">
-            {Math.round(recordProgress * 100)}%
-          </span>
-        </div>
+          />
+          {isRecording ? (
+            <span>Merekam ({Math.max(0, 2.5 - recordProgress * 2.5).toFixed(1)}s)</span>
+          ) : predictions.length > 0 ? (
+            <span>Ulangi Rekam</span>
+          ) : (
+            <span>Rekam</span>
+          )}
+        </button>
 
         {/* WEBCAM VIDEO / CANVAS CONTAINER */}
-        <div className="relative aspect-video max-h-[25dvh] sm:max-h-[29dvh] min-h-[175px] w-full overflow-hidden bg-ink">
+        <div className="relative aspect-video max-h-[26dvh] sm:max-h-[30dvh] min-h-[185px] w-full overflow-hidden bg-ink">
           {mode === "webcam" && (
             <video
               ref={videoRef}
@@ -926,17 +910,17 @@ export default function WordCameraSlot({
         </div>
       )}
 
-      {/* 3. BOTTOM SECTION: SIDE-BY-SIDE [ PREDIKSI ] & [ VIDEO DEMO ] */}
+      {/* 3. BOTTOM SECTION: SIDE-BY-SIDE [ PREDIKSI TERATAS ] & [ VIDEO DEMO ] */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-        {/* BOTTOM LEFT: [ PREDIKSI ] */}
-        <div className="rounded-2xl border-2 border-ink bg-white p-2.5 sm:p-3 shadow-[3px_3px_0px_#1B1B3A] flex flex-col justify-between overflow-hidden min-h-[145px] max-h-[175px]">
+        {/* BOTTOM LEFT: [ PREDIKSI TERATAS ] */}
+        <div className="rounded-2xl border-2 border-ink bg-white p-3 shadow-[3px_3px_0px_#1B1B3A] flex flex-col justify-between overflow-hidden min-h-[145px] max-h-[175px]">
           <div className="flex items-center justify-between border-b border-ink/15 pb-1">
             <span className="text-[11px] font-bold text-ink/75 uppercase tracking-wider">
-              Prediksi AI
+              PREDIKSI TERATAS
             </span>
             {matched ? (
               <span className="rounded-full bg-mint px-2 py-0.5 text-[10px] font-bold text-ink border border-ink">
-                Cocok (+15 XP)
+                ✓ Cocok (+15 XP)
               </span>
             ) : (
               <span className="text-[10px] font-semibold text-ink/50">
@@ -945,82 +929,49 @@ export default function WordCameraSlot({
             )}
           </div>
 
-          {/* Prediksi Content */}
-          <div className="flex-1 flex flex-col justify-center py-1">
-            {matched ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-mint bg-mint/20 p-2 text-center">
-                <p className="font-display text-xs sm:text-sm font-bold text-ink">
-                  🎉 Gerakan "{word.title}" Berhasil Dikenali!
-                </p>
-                <p className="text-[11px] font-semibold text-ink/80 mt-0.5">
-                  {alreadyLearned
-                    ? `Sudah tercatat di progres (+15 XP)`
-                    : `Selamat, +15 XP berhasil diraih!`}
-                </p>
-              </div>
-            ) : predictions.length > 0 ? (
-              <div className="space-y-1.5">
-                {predictions.slice(0, 3).map((cand) => {
-                  const pct = Math.round(cand.confidence * 100);
-                  const isTarget = cand.word === word.id;
-                  return (
-                    <div key={cand.word} className="space-y-0.5">
-                      <div className="flex items-center justify-between text-xs font-bold text-ink">
-                        <span className={isTarget ? "text-grape font-extrabold" : "text-ink"}>
-                          {cand.label} {isTarget ? " (Target)" : ""}
-                        </span>
-                        <span>{pct}%</span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full border border-ink bg-paper">
-                        <div
-                          className={`h-full transition-all duration-300 ${isTarget ? "bg-mint" : "bg-sky"}`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center py-1">
-                <p className="text-xs font-semibold text-ink/70">
-                  {isRecording
-                    ? "Sedang merekam gerakan tangan..."
-                    : "Tekan tombol Rekam di atas untuk menilai gerakan."}
-                </p>
-                <div className="mt-2 flex items-center gap-2 text-[11px] font-semibold text-ink/65">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${
-                      handDetected ? "bg-mint" : "bg-coral"
-                    }`}
-                  />
-                  <span>
-                    {handDetected ? "Tangan terdeteksi" : "Arahkan tangan ke kamera"}
+          {/* Prediksi Rows (Always structured with 3 rows) */}
+          <div className="space-y-1.5 py-1">
+            {(predictions.length > 0
+              ? predictions.slice(0, 3).map((cand) => ({
+                  label: cand.label,
+                  pct: Math.round(cand.confidence * 100),
+                  isTarget: cand.word === word.id,
+                }))
+              : [
+                  { label: word.title, pct: 0, isTarget: true },
+                  { label: "-", pct: 0, isTarget: false },
+                  { label: "-", pct: 0, isTarget: false },
+                ]
+            ).map((cand, idx) => (
+              <div key={idx} className="space-y-0.5">
+                <div className="flex items-center justify-between text-xs font-bold text-ink">
+                  <span className={cand.isTarget ? "text-grape font-extrabold" : "text-ink"}>
+                    {cand.label} {cand.isTarget && cand.pct > 0 ? " (Target)" : ""}
                   </span>
+                  <span className="font-mono text-xs">{cand.pct}%</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full border border-ink bg-paper">
+                  <div
+                    className={`h-full transition-all duration-300 ${cand.isTarget ? "bg-mint" : "bg-sky"}`}
+                    style={{ width: `${cand.pct}%` }}
+                  />
                 </div>
               </div>
-            )}
+            ))}
           </div>
         </div>
 
-        {/* BOTTOM RIGHT: [ VIDEO DEMO ] */}
+        {/* BOTTOM RIGHT: [ VIDEO DEMO ] (Tanpa Opsi Zoom) */}
         <div className="rounded-2xl border-2 border-ink bg-ink overflow-hidden shadow-[3px_3px_0px_#1B1B3A] flex flex-col min-h-[145px] max-h-[175px]">
           {/* Header Video Demo */}
-          <div className="flex items-center justify-between border-b-2 border-ink bg-white px-2.5 py-1 shrink-0">
+          <div className="flex items-center justify-between border-b-2 border-ink bg-white px-3 py-1.5 shrink-0">
             <span className="flex items-center gap-1.5 text-xs font-bold text-ink truncate">
               <span className="h-2 w-2 shrink-0 rounded-full bg-mint animate-pulse" />
               Video Demo: {word.title}
             </span>
-            <button
-              type="button"
-              onClick={() => setIsDemoExpanded(true)}
-              className="inline-flex items-center gap-1 rounded border border-ink/40 bg-paper px-2 py-0.5 text-[10px] font-bold text-ink hover:bg-sun shrink-0"
-              title="Perbesar video demo"
-              aria-label="Perbesar video demo"
-            >
-              <Maximize2 className="h-2.5 w-2.5" />
-              Zoom
-            </button>
+            <span className="text-[10px] font-semibold text-ink/60">
+              BISINDO
+            </span>
           </div>
 
           {/* Video Player Box */}
@@ -1048,9 +999,7 @@ export default function WordCameraSlot({
                   muted
                   playsInline
                   preload="auto"
-                  className="h-full w-full cursor-pointer object-contain"
-                  onClick={() => setIsDemoExpanded(true)}
-                  title="Klik untuk memperbesar contoh gerakan"
+                  className="h-full w-full object-contain"
                   onError={handleMediaError}
                 >
                   <source src={mediaUrl} type="video/mp4" />
