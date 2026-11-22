@@ -18,6 +18,17 @@ import {
   type WordPredictionCandidate,
 } from "@/lib/cv/wordClassifier";
 import { useProgress } from "@/lib/storage/useProgress";
+import type { WordDemoRow } from "@/lib/supabase/client";
+import {
+  Check,
+  Eye,
+  EyeOff,
+  Maximize2,
+  RefreshCw,
+  Video,
+  Volume2,
+  X,
+} from "react-feather";
 
 type SlotMode = "idle" | "webcam" | "simulation";
 type SlotStatus = "idle" | "loading" | "ready" | "error";
@@ -31,6 +42,10 @@ type SimulationSequenceMap = Record<string, SimulationFrame[]>;
 
 interface WordCameraSlotProps {
   word: WordItem;
+  isLearned?: boolean;
+  demo?: WordDemoRow;
+  isLoadingDemo?: boolean;
+  onSpeak?: () => void;
 }
 
 const RECORD_DURATION_MS = 2500;
@@ -64,7 +79,19 @@ function toLandmarkList(points: number[][]): NormalizedLandmark2D[] {
   return points.map((pt) => ({ x: pt[0] ?? 0, y: pt[1] ?? 0 }));
 }
 
-export default function WordCameraSlot({ word }: WordCameraSlotProps) {
+function isImageAnimation(demo: WordDemoRow): boolean {
+  const mime = demo.mime_type.toLowerCase();
+  const url = demo.video_url.toLowerCase();
+  return mime.startsWith("image/") || url.endsWith(".webp") || url.endsWith(".gif");
+}
+
+export default function WordCameraSlot({
+  word,
+  isLearned,
+  demo,
+  isLoadingDemo = false,
+  onSpeak,
+}: WordCameraSlotProps) {
   const { data, markWordLearned } = useProgress();
   const [mode, setMode] = useState<SlotMode>("idle");
   const [status, setStatus] = useState<SlotStatus>("idle");
@@ -82,6 +109,12 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
   const [predictions, setPredictions] = useState<WordPredictionCandidate[]>([]);
   const [matched, setMatched] = useState<boolean>(false);
 
+  // Interactive PiP & Demo States
+  const [isPipMinimized, setIsPipMinimized] = useState<boolean>(false);
+  const [isDemoExpanded, setIsDemoExpanded] = useState<boolean>(false);
+  const [mediaFailed, setMediaFailed] = useState<boolean>(false);
+  const [retryCount, setRetryCount] = useState<number>(0);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -94,6 +127,8 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
   const lastVideoTsRef = useRef<number>(0);
   const lastVideoTimeRef = useRef<number>(-1);
   const celebratedRef = useRef<boolean>(false);
+  const demoVideoRef = useRef<HTMLVideoElement | null>(null);
+  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
     showLandmarksRef.current = showLandmarks;
@@ -111,6 +146,28 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
       unsubPose();
     };
   }, []);
+
+  // Reset media & expansion when word changes
+  useEffect(() => {
+    setMediaFailed(false);
+    setRetryCount(0);
+    setIsDemoExpanded(false);
+  }, [word.id, demo?.video_url]);
+
+  // Handle ESC key to close expand modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsDemoExpanded(false);
+      }
+    };
+    if (isDemoExpanded) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isDemoExpanded]);
 
   const stopMediaStream = useCallback(() => {
     if (streamRef.current) {
@@ -253,16 +310,19 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
               canvas.height = vh;
             }
 
-            if (video.currentTime !== lastVideoTimeRef.current) {
-              lastVideoTimeRef.current = video.currentTime;
-              const nowMs = performance.now();
-              const ts = Math.max(nowMs, lastVideoTsRef.current + 1);
-              lastVideoTsRef.current = ts;
+            const now = performance.now();
+            const currentTime = video.currentTime;
 
-              const handResult = detectVideoHands(handLandmarker, video, ts);
-              const poseResult = detectVideoPose(poseLandmarker, video, ts);
-              const hands = handResult.landmarks ?? [];
-              const poseAnchors = extractPoseAnchors(poseResult.landmarks?.[0]);
+            if (currentTime !== lastVideoTimeRef.current) {
+              lastVideoTimeRef.current = currentTime;
+              const timestamp = now > lastVideoTsRef.current ? now : lastVideoTsRef.current + 1;
+              lastVideoTsRef.current = timestamp;
+
+              const handResult = detectVideoHands(handLandmarker, video, timestamp);
+              const poseResult = detectVideoPose(poseLandmarker, video, timestamp);
+
+              const hands = handResult.landmarks;
+              const poseAnchors = extractPoseAnchors(poseResult.landmarks[0]);
 
               setHandDetected(hands.length > 0);
               setPoseDetected(poseAnchors !== null);
@@ -270,34 +330,32 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
               const ctx = canvas.getContext("2d");
               if (ctx) {
                 if (showLandmarksRef.current) {
-                  drawHandLandmarks(ctx, hands, canvas.width, canvas.height, true);
-                  drawPoseAnchors(ctx, poseAnchors, canvas.width, canvas.height, true);
+                  drawHandLandmarks(ctx, hands, vw, vh, true);
+                  drawPoseAnchors(ctx, poseAnchors, vw, vh, true);
                 } else {
-                  ctx.clearRect(0, 0, canvas.width, canvas.height);
+                  ctx.clearRect(0, 0, vw, vh);
                 }
               }
 
               if (isRecordingRef.current) {
-                const elapsed = nowMs - recordStartRef.current;
+                const elapsed = performance.now() - recordStartRef.current;
                 const progress = Math.min(1, elapsed / RECORD_DURATION_MS);
                 setRecordProgress(progress);
 
-                if (hands.length > 0 || poseAnchors !== null) {
-                  recordedFramesRef.current.push(extractWlFrameFeatures(hands, poseAnchors));
-                }
+                const frameFeatures = extractWlFrameFeatures(hands, poseAnchors);
+                recordedFramesRef.current.push(frameFeatures);
 
                 if (elapsed >= RECORD_DURATION_MS) {
                   isRecordingRef.current = false;
                   setIsRecording(false);
                   setRecordProgress(1);
 
-                  const collected = recordedFramesRef.current;
-                  if (collected.length < MIN_RECORD_FRAMES) {
-                    setErrorMsg("Gerakan tangan belum cukup terekam. Coba ulangi dan pastikan tangan terlihat di kamera.");
-                  } else if (classifierRef.current) {
-                    setErrorMsg(null);
-                    const ranked = classifierRef.current.predictFromFeatures(collected);
+                  const seq = recordedFramesRef.current;
+                  if (seq.length >= MIN_RECORD_FRAMES && classifierRef.current) {
+                    const ranked = classifierRef.current.predictFromFeatures(seq);
                     handlePredictions(ranked, WEBCAM_MATCH_THRESHOLD, "webcam");
+                  } else {
+                    setErrorMsg("Frame rekaman belum cukup. Pastikan tangan terlihat jelas lalu coba lagi.");
                   }
                 }
               }
@@ -313,20 +371,20 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
         const msg =
           err instanceof Error
             ? err.message
-            : "Tidak dapat mengakses kamera atau memuat model WL-BISINDO.";
+            : "Gagal menyalakan kamera. Pastikan izin akses telah diberikan.";
         setErrorMsg(msg);
         setStatus("error");
       }
     }
 
-    initWebcamLoop();
+    void initWebcamLoop();
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(rafId);
+      if (rafId) cancelAnimationFrame(rafId);
       stopMediaStream();
     };
-  }, [mode, handlePredictions, stopMediaStream]);
+  }, [handlePredictions, mode, stopMediaStream]);
 
   useEffect(() => {
     if (mode !== "simulation") return;
@@ -338,9 +396,6 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
       try {
         setStatus("loading");
         setErrorMsg(null);
-        celebratedRef.current = false;
-        setMatched(false);
-        setPredictions([]);
 
         const [classifier, sequenceMap] = await Promise.all([
           loadWordClassifier(),
@@ -348,7 +403,6 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
         ]);
 
         if (cancelled) return;
-        classifierRef.current = classifier;
 
         const frames = sequenceMap[simSampleWord];
         if (!frames || frames.length === 0) {
@@ -413,7 +467,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
       }
     }
 
-    runSimulationLoop();
+    void runSimulationLoop();
 
     return () => {
       cancelled = true;
@@ -421,81 +475,292 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
     };
   }, [mode, simSampleWord, handlePredictions]);
 
-  const alreadyLearned = (data.bisindo.learnedWords ?? []).includes(word.id);
+  const alreadyLearned = isLearned ?? (data.bisindo.learnedWords ?? []).includes(word.id);
 
-  if (mode === "idle") {
-    return (
-      <div className="card space-y-3 sm:space-y-4 bg-ink p-3.5 sm:p-6 text-white">
-        <div className="text-center">
-          <p className="font-display text-lg sm:text-xl font-bold">Area kamera untuk kata {word.title}</p>
-          <p className="mt-1 text-xs sm:text-sm text-white/80">
-            Video diproses di perangkatmu dan tidak dikirim ke server mana pun.
-          </p>
+  const isImgAnim = demo ? isImageAnimation(demo) : false;
+  const mediaUrl = demo?.video_url
+    ? retryCount > 0
+      ? `${demo.video_url}${demo.video_url.includes("?") ? "&" : "?"}retry=${retryCount}`
+      : demo.video_url
+    : null;
+
+  // Zoom/Expand Modal Preview
+  const renderExpandModal = () => (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Detail gerakan kata ${word.title}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/75 p-4 backdrop-blur-sm animate-pop"
+      onClick={() => setIsDemoExpanded(false)}
+    >
+      <div
+        className="card w-full max-w-lg space-y-3 bg-white p-4 sm:p-5 shadow-[8px_8px_0px_#1B1B3A]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b-2 border-ink/10 pb-2">
+          <div className="flex items-center gap-2">
+            <span className="rounded-xl border-2 border-ink bg-grape px-2.5 py-1 font-display text-base sm:text-lg font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
+              {word.title}
+            </span>
+            <span className="rounded-full border-2 border-ink bg-mint px-2 py-0.5 text-xs font-bold text-ink">
+              {word.hands} Tangan
+            </span>
+            {alreadyLearned && (
+              <span className="rounded-full border-2 border-ink bg-sun px-2 py-0.5 text-xs font-bold text-ink">
+                Dikuasai <Check className="inline h-3 w-3" />
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsDemoExpanded(false)}
+            className="btn !min-h-[34px] bg-coral px-3 py-1 text-xs font-bold text-white shadow-[2px_2px_0px_#1B1B3A]"
+          >
+            <X className="mr-1 inline h-3.5 w-3.5" />
+            Tutup Preview
+          </button>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3">
+        <div className="relative aspect-video w-full overflow-hidden rounded-xl border-2 border-ink bg-ink">
+          {mediaUrl && !mediaFailed ? (
+            isImgAnim ? (
+              <img
+                src={mediaUrl}
+                alt={`Animasi gerakan ${word.title}`}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <video
+                src={mediaUrl}
+                autoPlay
+                loop
+                muted
+                controls
+                playsInline
+                className="h-full w-full object-contain"
+              />
+            )
+          ) : (
+            <div className="flex h-full w-full items-center justify-center p-4 text-center text-xs text-white/80">
+              {word.guide || "Video contoh gerakan belum tersedia."}
+            </div>
+          )}
+        </div>
+
+        {word.guide && (
+          <div className="rounded-xl border border-ink/20 bg-surface-secondary p-3 text-xs sm:text-sm text-ink/85 leading-relaxed">
+            <strong className="text-ink">Panduan Gerakan:</strong> {word.guide}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={() => setIsDemoExpanded(false)}
+            className="btn w-full sm:w-auto bg-sun px-4 py-2 text-xs font-bold text-ink shadow-[2px_2px_0px_#1B1B3A]"
+          >
+            {mode === "idle" ? "Mengerti, Tutup Preview" : "Lanjut Latihan Kamera"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // MODE IDLE: Full Demo Video & Practice Launcher
+  if (mode === "idle") {
+    return (
+      <div className="card space-y-3 bg-white p-3.5 sm:p-4 animate-pop">
+        {/* Word Info Header */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-ink/10 pb-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-xl border-2 border-ink bg-grape px-2.5 py-1 font-display text-lg sm:text-xl font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
+              {word.title}
+            </span>
+            <span className="rounded-full border-2 border-ink bg-mint px-2.5 py-0.5 text-xs font-bold text-ink">
+              {word.hands} Tangan
+            </span>
+            {alreadyLearned && (
+              <span className="rounded-full border-2 border-ink bg-sun px-2.5 py-0.5 text-xs font-bold text-ink">
+                Dikuasai <Check className="inline h-3 w-3" />
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onSpeak && (
+              <button
+                type="button"
+                aria-label={`Dengarkan pengucapan kata ${word.title}`}
+                onClick={onSpeak}
+                className="btn !min-h-[36px] !min-w-[36px] bg-sun !p-1.5 text-ink shadow-[2px_2px_0px_#1B1B3A]"
+                title="Dengarkan suara kata"
+              >
+                <Volume2 className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Demo Video Container */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs sm:text-sm font-bold text-ink">
+              Ikuti gerakan seperti ini:
+            </p>
+            {mediaUrl && !mediaFailed && !isImgAnim && (
+              <button
+                type="button"
+                onClick={() => setIsDemoExpanded(true)}
+                className="inline-flex items-center gap-1 rounded-full border border-ink bg-sky/30 px-2 py-0.5 text-[11px] font-bold text-ink hover:bg-sky"
+              >
+                <Maximize2 className="h-3 w-3" />
+                Perbesar
+              </button>
+            )}
+          </div>
+
+          <div className="relative aspect-video max-h-[28dvh] sm:max-h-[32dvh] min-h-[170px] w-full overflow-hidden rounded-2xl border-2 border-ink bg-ink">
+            {isLoadingDemo ? (
+              <div
+                className="flex h-full w-full animate-pulse items-center justify-center p-4 text-xs font-semibold text-white/70"
+                role="status"
+              >
+                Memuat contoh gerakan {word.title}...
+              </div>
+            ) : mediaUrl && !mediaFailed ? (
+              isImgAnim ? (
+                <img
+                  src={mediaUrl}
+                  alt={`Animasi contoh gerakan BISINDO kata ${word.title}`}
+                  onError={() => setMediaFailed(true)}
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <video
+                  ref={demoVideoRef}
+                  src={mediaUrl}
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  preload="auto"
+                  onClick={() => setIsDemoExpanded(true)}
+                  aria-label={`Video contoh gerakan kata ${word.title}`}
+                  onError={() => setMediaFailed(true)}
+                  className="h-full w-full cursor-pointer object-contain"
+                  title="Klik untuk memperbesar contoh gerakan"
+                />
+              )
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center text-xs text-white/80">
+                <p className="font-semibold text-white">
+                  {mediaFailed
+                    ? `Gagal memuat video contoh ${word.title}.`
+                    : `Video contoh ${word.title} belum tersedia.`}
+                </p>
+                {mediaFailed && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMediaFailed(false);
+                      setRetryCount((prev) => prev + 1);
+                    }}
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border-2 border-ink bg-white px-3 py-1 text-xs font-bold text-ink hover:bg-sun"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Muat ulang
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {word.guide && (
+            <p className="text-xs leading-snug text-ink/80 bg-surface-secondary p-2 rounded-xl border border-ink/15">
+              <strong className="text-ink">Panduan:</strong> {word.guide}
+            </p>
+          )}
+        </div>
+
+        {/* Action Buttons to Start Practice */}
+        <div className="flex flex-col sm:flex-row items-center gap-2 pt-0.5">
           <button
             type="button"
             onClick={() => switchMode("webcam")}
-            className="btn w-full sm:w-auto min-h-[42px] sm:min-h-[44px] bg-sun text-ink text-xs sm:text-base py-2.5 sm:py-3"
+            className="btn w-full flex-1 !min-h-[40px] bg-sun text-ink text-xs sm:text-sm font-bold py-2 shadow-[3px_3px_0px_#1B1B3A]"
           >
-            Gunakan Kamera
+            <Video className="mr-1.5 inline h-4 w-4" />
+            Gunakan Kamera Langsung
           </button>
           <button
             type="button"
             onClick={() => switchMode("simulation")}
-            className="btn w-full sm:w-auto min-h-[42px] sm:min-h-[44px] bg-white text-ink text-xs sm:text-base py-2.5 sm:py-3"
+            className="btn w-full sm:w-auto !min-h-[40px] bg-white text-ink text-xs sm:text-sm font-semibold py-2"
           >
-            Gunakan Video Simulasi
+            Mode Simulasi Rangka
           </button>
         </div>
 
-        <p className="text-center text-[11px] sm:text-xs text-white/75">
-          Di mode kamera, tekan Rekam Gerakan selama 2,5 detik. Di mode simulasi, aplikasi menampilkan animasi rangka tangan dan tubuh bagian atas tanpa foto wajah.
-        </p>
+        {isDemoExpanded && renderExpandModal()}
       </div>
     );
   }
 
+  // ACTIVE MODE: Webcam or Simulation with Floating PiP
   return (
-    <div className="card space-y-3 sm:space-y-4 bg-white p-3.5 sm:p-5">
+    <div className="card space-y-2.5 sm:space-y-3 bg-white p-3 sm:p-4">
+      {/* Sleek Top Info & Controls */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-lg border-2 border-ink bg-sun px-2.5 py-1 text-xs font-bold text-ink">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="rounded-lg border-2 border-ink bg-grape px-2 py-0.5 font-display text-sm font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
+            {word.title}
+          </span>
+          <span className="rounded-lg border-2 border-ink bg-sun px-2 py-0.5 text-xs font-bold text-ink">
             {mode === "webcam" ? "Kamera Langsung" : "Simulasi Rangka"}
           </span>
-          <span className="rounded-lg border-2 border-ink bg-paper px-2.5 py-1 text-xs font-semibold text-ink">
+          <span className="rounded-lg border border-ink bg-paper px-2 py-0.5 text-[11px] font-semibold text-ink">
             Tangan: {handDetected ? "Terdeteksi" : "Menunggu"}
           </span>
-          <span className="rounded-lg border-2 border-ink bg-paper px-2.5 py-1 text-xs font-semibold text-ink">
+          <span className="rounded-lg border border-ink bg-paper px-2 py-0.5 text-[11px] font-semibold text-ink">
             Pose: {poseDetected ? "Terdeteksi" : "Menunggu"}
           </span>
           {mode === "simulation" && status === "ready" && (
-            <span className="rounded-lg border-2 border-ink bg-sky px-2.5 py-1 text-xs font-semibold text-ink">
+            <span className="rounded-lg border border-ink bg-sky px-2 py-0.5 text-[11px] font-semibold text-ink">
               Frame {simFrameIndex + 1}/30
             </span>
           )}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {onSpeak && (
+            <button
+              type="button"
+              aria-label={`Dengarkan kata ${word.title}`}
+              onClick={onSpeak}
+              className="btn !min-h-[34px] !min-w-[34px] bg-sun !p-1 text-ink"
+              title="Dengarkan suara kata"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowLandmarks((prev) => !prev)}
-            className="btn min-h-[44px] bg-paper px-3 py-2 text-xs text-ink"
+            className="btn !min-h-[34px] bg-paper px-2.5 py-1 text-xs text-ink"
           >
             {showLandmarks ? "Sembunyikan Rangka" : "Tampilkan Rangka"}
           </button>
           <button
             type="button"
             onClick={() => switchMode(mode === "webcam" ? "simulation" : "webcam")}
-            className="btn min-h-[44px] bg-sky px-3 py-2 text-xs text-ink"
+            className="btn !min-h-[34px] bg-sky px-2.5 py-1 text-xs text-ink"
           >
-            {mode === "webcam" ? "Mode Simulasi" : "Mode Kamera"}
+            {mode === "webcam" ? "Simulasi" : "Kamera"}
           </button>
           <button
             type="button"
             onClick={() => switchMode("idle")}
-            className="btn min-h-[44px] bg-coral px-3 py-2 text-xs text-white"
+            className="btn !min-h-[34px] bg-coral px-2.5 py-1 text-xs text-white"
           >
             Tutup
           </button>
@@ -503,8 +768,8 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
       </div>
 
       {mode === "simulation" && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-ink bg-paper p-3">
-          <label htmlFor="wl-sim-select" className="text-sm font-bold text-ink">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-ink/40 bg-paper px-3 py-1.5 text-xs">
+          <label htmlFor="wl-sim-select" className="font-bold text-ink">
             Uji sampel gerakan:
           </label>
           <select
@@ -514,7 +779,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
               setSimSampleWord(e.target.value);
               setSimFrameIndex(0);
             }}
-            className="min-h-[44px] rounded-xl border-2 border-ink bg-white px-3 py-2 text-sm font-semibold text-ink"
+            className="rounded-lg border-2 border-ink bg-white px-2 py-1 text-xs font-semibold text-ink"
           >
             {WORD_ITEMS.map((item) => (
               <option key={item.id} value={item.id}>
@@ -525,7 +790,8 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
         </div>
       )}
 
-      <div className="relative aspect-video w-full overflow-hidden rounded-2xl border-2 border-ink bg-ink">
+      {/* Camera / Video Viewport with Interactive PiP */}
+      <div className="relative aspect-video max-h-[28dvh] sm:max-h-[32dvh] min-h-[175px] w-full overflow-hidden rounded-2xl border-2 border-ink bg-ink">
         {mode === "webcam" && (
           <video
             ref={videoRef}
@@ -542,6 +808,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
           className="pointer-events-none absolute inset-0 h-full w-full"
         />
 
+        {/* LOADING OVERLAYS */}
         {status === "loading" && mode === "webcam" && hasLiveStream && (
           <div className="pointer-events-none absolute inset-x-3 bottom-3 flex flex-col items-center gap-1.5 rounded-xl border border-white/25 bg-ink/85 px-3 py-2 text-center backdrop-blur-sm">
             <p className="text-xs font-semibold text-white">
@@ -558,7 +825,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
 
         {status === "loading" && !(mode === "webcam" && hasLiveStream) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-ink/85 p-4 text-center text-white">
-            <p className="font-semibold">
+            <p className="font-semibold text-xs sm:text-sm">
               {mode === "webcam"
                 ? `Memuat kamera, pelacak tangan, pose & model kata... ${Math.round(((handLoadProgress + poseLoadProgress) / 2) * 100)}%`
                 : "Memuat model kata BISINDO dan animasi rangka..."}
@@ -582,23 +849,100 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
           </div>
         )}
 
-        {mode === "simulation" && status === "ready" && (
-          <div className="pointer-events-none absolute bottom-2 left-2 right-2 flex justify-center">
-            <span className="rounded-lg border border-white/25 bg-ink/80 px-3 py-1 text-xs text-white">
-              Animasi rangka tangan dan bahu saja (tanpa foto wajah)
-            </span>
+        {/* FLOATING INTERACTIVE PiP DEMO (Sudut Kanan Atas Kamera) */}
+        {isPipMinimized ? (
+          <button
+            type="button"
+            onClick={() => setIsPipMinimized(false)}
+            className="absolute right-2.5 top-2.5 z-20 flex items-center gap-1.5 rounded-xl border-2 border-ink bg-white/95 px-2.5 py-1 text-xs font-bold text-ink shadow-[2px_2px_0px_#1B1B3A] backdrop-blur-sm transition hover:bg-sun"
+            title="Tampilkan kembali video contoh gerakan"
+            aria-label="Tampilkan kembali video contoh gerakan"
+          >
+            <Eye className="h-3.5 w-3.5 text-grape" />
+            <span>Lihat Contoh</span>
+          </button>
+        ) : (
+          <div className="absolute right-2 top-2 z-20 w-36 sm:w-44 overflow-hidden rounded-xl border-2 border-ink bg-ink shadow-[3px_3px_0px_#1B1B3A] transition-all">
+            {/* PiP Header */}
+            <div className="flex items-center justify-between border-b border-ink/40 bg-surface-secondary/95 px-2 py-0.5 backdrop-blur-sm">
+              <span className="flex items-center gap-1 text-[10px] font-bold text-ink">
+                <span className="h-1.5 w-1.5 rounded-full bg-mint animate-pulse" />
+                Contoh: {word.title}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsDemoExpanded(true)}
+                  className="rounded p-0.5 text-ink hover:bg-ink/10"
+                  title="Perbesar video contoh (Zoom)"
+                  aria-label="Perbesar video contoh"
+                >
+                  <Maximize2 className="h-3 w-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPipMinimized(true)}
+                  className="rounded p-0.5 text-ink hover:bg-ink/10"
+                  title="Sembunyikan contoh"
+                  aria-label="Sembunyikan contoh"
+                >
+                  <EyeOff className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* PiP Video Player */}
+            <div className="relative aspect-video w-full bg-black">
+              {isLoadingDemo ? (
+                <div className="flex h-full w-full items-center justify-center p-2 text-center text-[10px] text-white/70">
+                  Memuat...
+                </div>
+              ) : mediaUrl && !mediaFailed ? (
+                isImgAnim ? (
+                  <img
+                    src={mediaUrl}
+                    alt={`Animasi contoh ${word.title}`}
+                    className="h-full w-full object-contain"
+                    onError={() => setMediaFailed(true)}
+                  />
+                ) : (
+                  <video
+                    ref={pipVideoRef}
+                    src={mediaUrl}
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    preload="auto"
+                    className="h-full w-full cursor-pointer object-contain"
+                    onClick={() => setIsDemoExpanded(true)}
+                    title="Klik untuk memperbesar contoh gerakan"
+                    onError={() => setMediaFailed(true)}
+                  />
+                )
+              ) : (
+                <div className="flex h-full w-full items-center justify-center p-1.5 text-center text-[10px] text-white/80">
+                  {word.guide ? (
+                    <span className="line-clamp-2">{word.guide}</span>
+                  ) : (
+                    "Demo belum tersedia"
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
+      {/* RECORD BUTTON & PROGRESS */}
       {mode === "webcam" && status === "ready" && (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <button
             type="button"
             onClick={startRecording}
             disabled={isRecording}
-            className={`btn min-h-[44px] w-full text-center ${
-              isRecording ? "bg-coral text-white opacity-95" : "bg-sun text-ink"
+            className={`btn !min-h-[40px] w-full text-center text-xs sm:text-sm font-bold ${
+              isRecording ? "bg-coral text-white opacity-95" : "bg-sun text-ink shadow-[2px_2px_0px_#1B1B3A]"
             }`}
           >
             {isRecording
@@ -607,7 +951,7 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
                 ? "Ulangi Rekam Gerakan (2,5 dtk)"
                 : "Rekam Gerakan (2,5 dtk)"}
           </button>
-          <div className="h-3 w-full overflow-hidden rounded-full border-2 border-ink bg-paper">
+          <div className="h-2.5 w-full overflow-hidden rounded-full border-2 border-ink bg-paper">
             <div
               className="h-full bg-mint transition-all duration-75"
               style={{ width: `${Math.round(recordProgress * 100)}%` }}
@@ -617,23 +961,24 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
       )}
 
       {errorMsg && (
-        <div className="rounded-xl border-2 border-ink bg-coral p-3 text-sm font-semibold text-white">
+        <div className="rounded-xl border-2 border-ink bg-coral p-2.5 text-xs sm:text-sm font-semibold text-white">
           {errorMsg}
         </div>
       )}
 
+      {/* MATCH CELEBRATION */}
       {matched && (
         <div
-          className={`rounded-2xl border-2 border-ink p-4 text-ink ${
+          className={`rounded-xl border-2 border-ink p-3 text-ink ${
             mode === "webcam" ? "bg-mint" : "bg-sky"
           }`}
         >
-          <p className="font-display text-lg font-bold">
+          <p className="font-display text-base sm:text-lg font-bold">
             {mode === "webcam"
               ? `Hebat! Gerakan kata ${word.title} berhasil dikenali!`
               : `Simulasi AI Mengenali Kata ${word.title}`}
           </p>
-          <p className="mt-1 text-sm font-semibold">
+          <p className="mt-0.5 text-xs sm:text-sm font-semibold">
             {mode === "webcam"
               ? alreadyLearned
                 ? `Kata ${word.title} sudah tercatat di progresmu (+15 XP).`
@@ -643,25 +988,26 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
         </div>
       )}
 
+      {/* PREDICTIONS (COMPACT) */}
       {predictions.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-bold uppercase tracking-wide text-ink/70">
+        <div className="space-y-1 rounded-xl border border-ink/20 bg-paper/60 p-2.5">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-ink/70">
             Prediksi Teratas (WL-BISINDO Conformer)
           </p>
-          <div className="space-y-2">
+          <div className="space-y-1">
             {predictions.map((cand) => {
               const pct = Math.round(cand.confidence * 100);
               const isTarget = cand.word === word.id;
               return (
-                <div key={cand.word} className="space-y-1">
-                  <div className="flex items-center justify-between text-sm font-bold text-ink">
+                <div key={cand.word} className="space-y-0.5">
+                  <div className="flex items-center justify-between text-xs font-bold text-ink">
                     <span>
                       {cand.label}
                       {isTarget ? " (Target)" : ""}
                     </span>
                     <span>{pct}%</span>
                   </div>
-                  <div className="h-3 w-full overflow-hidden rounded-full border-2 border-ink bg-paper">
+                  <div className="h-2 w-full overflow-hidden rounded-full border border-ink bg-white">
                     <div
                       className={`h-full transition-all duration-300 ${isTarget ? "bg-mint" : "bg-sky"}`}
                       style={{ width: `${pct}%` }}
@@ -673,6 +1019,9 @@ export default function WordCameraSlot({ word }: WordCameraSlotProps) {
           </div>
         </div>
       )}
+
+      {/* EXPAND MODAL OVERLAY */}
+      {isDemoExpanded && renderExpandModal()}
     </div>
   );
 }
