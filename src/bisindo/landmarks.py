@@ -202,3 +202,102 @@ def extract_features_with_yolo_fallback(
         mapped_hands.append(mapped)
 
     return _features_from_hands_xy(mapped_hands)
+
+
+def _raw_hand_to_np(hand_lms: list[Any]) -> np.ndarray:
+    return np.array(
+        [[lm.x, lm.y] for lm in hand_lms[:NUM_LANDMARKS]],
+        dtype=np.float32,
+    )
+
+
+def _unmap_padded_hands(
+    raw_hands: list[list[Any]],
+    pw: int,
+    ph: int,
+    px: int,
+    py: int,
+    uw: int,
+    uh: int,
+    *,
+    flipped: bool = False,
+) -> list[np.ndarray]:
+    mapped: list[np.ndarray] = []
+    for hand_lms in raw_hands[:2]:
+        pts = _raw_hand_to_np(hand_lms)
+        if flipped:
+            pts[:, 0] = 1.0 - pts[:, 0]
+        pts[:, 0] = (pts[:, 0] * float(pw) - float(px)) / float(uw)
+        pts[:, 1] = (pts[:, 1] * float(ph) - float(py)) / float(uh)
+        mapped.append(pts.astype(np.float32))
+    return mapped
+
+
+def extract_raw_hands_enhanced(
+    bgr_image: np.ndarray,
+    detector: Any,
+    *,
+    expect_two_hands: bool = False,
+    min_upscale_side: int = 480,
+) -> tuple[list[np.ndarray], float]:
+    """Multi-pass hand extraction recovering 2nd hands in tightly-cropped or low-res photos.
+
+    Returns `(hands_xy, aspect_ratio)` in original image `[0, 1]` coordinates.
+    """
+    h0, w0 = bgr_image.shape[:2]
+    aspect_ratio = float(w0) / float(max(1, h0))
+    target_count = 2 if expect_two_hands else 1
+
+    raw0 = detect_raw_hands(bgr_image, detector)
+    best = [_raw_hand_to_np(h) for h in raw0[:2]]
+    if len(best) >= target_count:
+        return best, aspect_ratio
+
+    max_side = max(h0, w0)
+    if max_side < min_upscale_side and max_side > 0:
+        scale = float(min_upscale_side) / float(max_side)
+        up = cv2.resize(
+            bgr_image,
+            (max(1, int(round(w0 * scale))), max(1, int(round(h0 * scale)))),
+            interpolation=cv2.INTER_CUBIC,
+        )
+        raw1 = detect_raw_hands(up, detector)
+        if len(raw1) > len(best):
+            best = [_raw_hand_to_np(h) for h in raw1[:2]]
+            if len(best) >= target_count:
+                return best, aspect_ratio
+    else:
+        up = bgr_image
+
+    uh, uw = up.shape[:2]
+    py, px = int(round(uh * 0.25)), int(round(uw * 0.25))
+    padded = cv2.copyMakeBorder(up, py, py, px, px, cv2.BORDER_REPLICATE)
+    ph, pw = padded.shape[:2]
+
+    raw2 = detect_raw_hands(padded, detector)
+    if len(raw2) > len(best):
+        best = _unmap_padded_hands(raw2, pw, ph, px, py, uw, uh, flipped=False)
+        if len(best) >= target_count:
+            return best, aspect_ratio
+
+    if expect_two_hands or len(best) == 0:
+        pflip = cv2.flip(padded, 1)
+        raw3 = detect_raw_hands(pflip, detector)
+        if len(raw3) > len(best):
+            best = _unmap_padded_hands(raw3, pw, ph, px, py, uw, uh, flipped=True)
+            if len(best) >= target_count:
+                return best, aspect_ratio
+
+    if expect_two_hands and len(best) < 2:
+        py4, px4 = int(round(uh * 0.40)), int(round(uw * 0.40))
+        padded4 = cv2.copyMakeBorder(up, py4, py4, px4, px4, cv2.BORDER_REPLICATE)
+        lab = cv2.cvtColor(padded4, cv2.COLOR_BGR2LAB)
+        l_ch, a_ch, b_ch = cv2.split(lab)
+        l_clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(l_ch)
+        enhanced4 = cv2.cvtColor(cv2.merge([l_clahe, a_ch, b_ch]), cv2.COLOR_LAB2BGR)
+        ph4, pw4 = enhanced4.shape[:2]
+        raw4 = detect_raw_hands(enhanced4, detector)
+        if len(raw4) > len(best):
+            best = _unmap_padded_hands(raw4, pw4, ph4, px4, py4, uw, uh, flipped=False)
+
+    return best, aspect_ratio

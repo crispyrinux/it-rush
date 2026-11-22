@@ -11,6 +11,7 @@ import numpy as np
 import tensorflow as tf
 import yaml
 
+from bisindo.features import FEATURE_DIM_V2, build_bisindo_v2_features
 from bisindo.landmarks import create_hands_detector, extract_features_from_bgr
 
 
@@ -27,8 +28,18 @@ def main() -> None:
     args = parse_args()
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))
 
-    model_path = args.model or Path(cfg["paths"]["tflite_model"])
-    labels_path = args.labels or Path(cfg["paths"]["labels_json"])
+    v2_model = Path(cfg["paths"].get("v2_tflite_model", "artifacts/bisindo_alphabet_v2_f32.tflite"))
+    v2_labels = Path(cfg["paths"].get("v2_labels_json", "artifacts/bisindo_alphabet_v2_labels.json"))
+    if args.model is not None:
+        model_path = args.model
+        labels_path = args.labels or Path(cfg["paths"]["labels_json"])
+    elif v2_model.exists():
+        model_path = v2_model
+        labels_path = args.labels or (v2_labels if v2_labels.exists() else Path(cfg["paths"]["labels_json"]))
+    else:
+        model_path = Path(cfg["paths"]["tflite_model"])
+        labels_path = args.labels or Path(cfg["paths"]["labels_json"])
+
     two_hand_thresh = float(cfg["inference"]["two_hand_threshold"])
     single_hand_thresh = float(cfg["inference"]["single_hand_threshold"])
 
@@ -36,14 +47,20 @@ def main() -> None:
 
     interpreter = tf.lite.Interpreter(model_path=str(model_path))
     interpreter.allocate_tensors()
-    input_idx = interpreter.get_input_details()[0]["index"]
+    in_det = interpreter.get_input_details()[0]
+    input_idx = in_det["index"]
+    input_dim = int(in_det["shape"][-1])
     output_idx = interpreter.get_output_details()[0]["index"]
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
         raise RuntimeError(f"Could not open webcam index {args.camera}")
 
-    detector = create_hands_detector(static_image_mode=False, min_detection_confidence=0.3)
+    detector = create_hands_detector(
+        static_image_mode=False,
+        min_detection_confidence=0.3,
+        min_tracking_confidence=0.3,
+    )
 
     try:
         while True:
@@ -55,24 +72,30 @@ def main() -> None:
             res = extract_features_from_bgr(frame, detector)
 
             display_text = "No sign detected"
-            if res.features is not None:
+            if res.hands_xy:
                 h, w = frame.shape[:2]
                 for pts in res.hands_xy:
                     for x, y in pts:
                         cv2.circle(frame, (int(x * w), int(y * h)), 4, (0, 255, 0), -1)
 
-                inp = res.features.reshape(1, -1).astype(np.float32)
-                interpreter.set_tensor(input_idx, inp)
-                interpreter.invoke()
-                scores = interpreter.get_tensor(output_idx)[0]
+                if input_dim == FEATURE_DIM_V2:
+                    feat = build_bisindo_v2_features(res.hands_xy, aspect_ratio=w / float(max(1, h)))
+                else:
+                    feat = res.features
 
-                best_idx = int(np.argmax(scores))
-                best_score = float(scores[best_idx])
-                best_label = labels[best_idx]
+                if feat is not None:
+                    inp = feat.reshape(1, -1).astype(np.float32)
+                    interpreter.set_tensor(input_idx, inp)
+                    interpreter.invoke()
+                    scores = interpreter.get_tensor(output_idx)[0]
 
-                thresh = two_hand_thresh if res.num_hands >= 2 else single_hand_thresh
-                if best_score >= thresh and best_label != "NOTHING":
-                    display_text = f"{best_label} ({best_score * 100:.1f}%)"
+                    best_idx = int(np.argmax(scores))
+                    best_score = float(scores[best_idx])
+                    best_label = labels[best_idx]
+
+                    thresh = two_hand_thresh if res.num_hands >= 2 else single_hand_thresh
+                    if best_score >= thresh and best_label != "NOTHING":
+                        display_text = f"{best_label} ({best_score * 100:.1f}%)"
 
             cv2.putText(
                 frame,

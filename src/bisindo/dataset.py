@@ -12,10 +12,12 @@ import cv2
 import numpy as np
 from sklearn.model_selection import GroupShuffleSplit, StratifiedGroupKFold, train_test_split
 
-from bisindo.features import FEATURE_DIM
+from bisindo.features import FEATURE_DIM, NUM_LANDMARKS, TWO_HAND_LETTERS
 from bisindo.landmarks import (
+    crop_with_yolo_boxes,
     extract_features_from_bgr,
     extract_features_with_yolo_fallback,
+    extract_raw_hands_enhanced,
     parse_yolo_boxes,
 )
 
@@ -368,3 +370,156 @@ def extract_dataset_from_directory(
     g_out = np.array(groups_list, dtype=str)
     discovered = sorted(set(y_list))
     return X_out, y_out, g_out, discovered
+
+
+def save_raw_hands_npz(
+    path: str | Path,
+    hands: np.ndarray,
+    num_hands: np.ndarray,
+    aspect_ratios: np.ndarray,
+    labels: np.ndarray,
+    groups: np.ndarray | None = None,
+) -> Path:
+    """Save unnormalized raw hand coordinates `(N, 2, 21, 2)` and metadata to NPZ."""
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    hands_arr = np.asarray(hands, dtype=np.float32)
+    nh_arr = np.asarray(num_hands, dtype=np.int32)
+    ar_arr = np.asarray(aspect_ratios, dtype=np.float32)
+    y_arr = np.asarray(labels, dtype=str)
+
+    n = len(hands_arr)
+    if hands_arr.ndim != 4 or hands_arr.shape[1:] != (2, NUM_LANDMARKS, 2):
+        raise ValueError(
+            f"Expected hands shape (N, 2, {NUM_LANDMARKS}, 2), got {hands_arr.shape}"
+        )
+    if len(nh_arr) != n or len(ar_arr) != n or len(y_arr) != n:
+        raise ValueError("Mismatched raw_hands dataset array lengths")
+
+    payload: dict[str, np.ndarray] = {
+        "hands": hands_arr,
+        "num_hands": nh_arr,
+        "aspect_ratios": ar_arr,
+        "y": y_arr,
+    }
+    if groups is not None:
+        g_arr = np.asarray(groups, dtype=str)
+        if len(g_arr) != n:
+            raise ValueError(f"Mismatched groups length: {len(g_arr)} != {n}")
+        payload["groups"] = g_arr
+
+    np.savez_compressed(out_path, **payload)
+    return out_path
+
+
+def load_raw_hands_npz(
+    path: str | Path,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+    """Load raw hand coordinates, counts, aspect ratios, labels, and optional groups from NPZ."""
+    data = np.load(Path(path), allow_pickle=False)
+    hands = data["hands"].astype(np.float32)
+    num_hands = data["num_hands"].astype(np.int32)
+    aspect_ratios = data["aspect_ratios"].astype(np.float32)
+    y = data["y"].astype(str)
+    groups = data["groups"].astype(str) if "groups" in data.files else None
+    return hands, num_hands, aspect_ratios, y, groups
+
+
+def extract_raw_hands_from_directory(
+    input_dir: str | Path,
+    classes: set[str] | None,
+    detector: Any,
+    *,
+    two_hand_classes: Iterable[str] = TWO_HAND_LETTERS,
+    allow_new_classes: bool = False,
+    find_yolo_fn: Callable[[Path, Path], Path | None] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """Extract raw `(2, 21, 2)` hand coordinates from class-organized image folders."""
+    in_dir = Path(input_dir)
+    if not in_dir.exists():
+        raise FileNotFoundError(f"Input directory not found: {in_dir}")
+
+    two_hand_set = {str(c).upper() for c in two_hand_classes}
+    hands_list: list[np.ndarray] = []
+    nh_list: list[int] = []
+    ar_list: list[float] = []
+    y_list: list[str] = []
+    groups_list: list[str] = []
+
+    for class_dir in sorted(in_dir.iterdir()):
+        if not class_dir.is_dir():
+            continue
+        label = class_dir.name.upper()
+        if not allow_new_classes and classes is not None and label not in classes:
+            continue
+
+        expect_two = label in two_hand_set
+        target_hands = 2 if expect_two else 1
+
+        for file_path in sorted(class_dir.iterdir()):
+            if not file_path.is_file() or file_path.suffix.lower() not in IMAGE_EXTS:
+                continue
+            bgr = cv2.imread(str(file_path))
+            if bgr is None:
+                continue
+
+            hands, aspect_ratio = extract_raw_hands_enhanced(
+                bgr,
+                detector,
+                expect_two_hands=expect_two,
+            )
+
+            if len(hands) < target_hands and find_yolo_fn is not None:
+                label_file = find_yolo_fn(file_path, in_dir)
+                yolo_boxes = parse_yolo_boxes(label_file) if label_file else None
+                if yolo_boxes:
+                    cropped, (x0, y0, w_norm, h_norm) = crop_with_yolo_boxes(
+                        bgr, yolo_boxes, pad_ratio=0.20
+                    )
+                    crop_hands, _ = extract_raw_hands_enhanced(
+                        cropped,
+                        detector,
+                        expect_two_hands=expect_two,
+                    )
+                    if len(crop_hands) > len(hands):
+                        remapped: list[np.ndarray] = []
+                        for pts in crop_hands[:2]:
+                            p = pts.copy()
+                            p[:, 0] = x0 + p[:, 0] * w_norm
+                            p[:, 1] = y0 + p[:, 1] * h_norm
+                            remapped.append(p.astype(np.float32))
+                        hands = remapped
+
+            if not hands:
+                continue
+
+            packed = np.zeros((2, NUM_LANDMARKS, 2), dtype=np.float32)
+            packed[0] = hands[0][:NUM_LANDMARKS]
+            if len(hands) >= 2:
+                packed[1] = hands[1][:NUM_LANDMARKS]
+
+            hands_list.append(packed)
+            nh_list.append(min(2, len(hands)))
+            ar_list.append(float(aspect_ratio))
+            y_list.append(label)
+            groups_list.append(f"{label}_{extract_base_group_id(file_path.name)}")
+
+    if not hands_list:
+        return (
+            np.empty((0, 2, NUM_LANDMARKS, 2), dtype=np.float32),
+            np.empty((0,), dtype=np.int32),
+            np.empty((0,), dtype=np.float32),
+            np.empty((0,), dtype=str),
+            np.empty((0,), dtype=str),
+            [],
+        )
+
+    return (
+        np.stack(hands_list, axis=0).astype(np.float32),
+        np.array(nh_list, dtype=np.int32),
+        np.array(ar_list, dtype=np.float32),
+        np.array(y_list, dtype=str),
+        np.array(groups_list, dtype=str),
+        sorted(set(y_list)),
+    )

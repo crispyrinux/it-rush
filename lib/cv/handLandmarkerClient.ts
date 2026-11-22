@@ -38,18 +38,18 @@ async function createLandmarkerWithSource(
       baseOptions: { ...baseOptions, delegate: "GPU" },
       runningMode: "VIDEO",
       numHands: 2,
-      minHandDetectionConfidence: 0.45,
-      minHandPresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
+      minHandDetectionConfidence: 0.3,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
   } catch {
     return await HandLandmarker.createFromOptions(fileset, {
       baseOptions: { ...baseOptions, delegate: "CPU" },
       runningMode: "VIDEO",
       numHands: 2,
-      minHandDetectionConfidence: 0.45,
-      minHandPresenceConfidence: 0.45,
-      minTrackingConfidence: 0.45,
+      minHandDetectionConfidence: 0.3,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
   }
 }

@@ -11,6 +11,7 @@ from bisindo.landmarks import (
     crop_with_yolo_boxes,
     extract_features_from_bgr,
     extract_features_with_yolo_fallback,
+    extract_raw_hands_enhanced,
     parse_yolo_boxes,
 )
 
@@ -111,3 +112,29 @@ def test_extract_features_with_yolo_fallback_recovers_missed_hands():
     assert res.features is not None
     assert res.features.shape == (FEATURE_DIM,)
     assert res.features[84] >= 0.0
+
+
+def test_extract_raw_hands_enhanced_unmaps_padded_and_flipped_fallback():
+    # Pass 1 (orig 100x100): 1 hand
+    # Pass 2 (upscaled 480x480): 1 hand
+    # Pass 3 (padded 25% -> 720x720, px=120, py=120): 2 hands at padded x=0.5, y=0.5
+    detector = MagicMock(spec=["detect"])
+    detector.detect.side_effect = [
+        SimpleNamespace(hand_landmarks=[_fake_tasks_landmarks(0.2)]),
+        SimpleNamespace(hand_landmarks=[_fake_tasks_landmarks(0.2)]),
+        SimpleNamespace(
+            hand_landmarks=[
+                [SimpleNamespace(x=0.5, y=0.5) for _ in range(NUM_LANDMARKS)],
+                [SimpleNamespace(x=0.5, y=0.5) for _ in range(NUM_LANDMARKS)],
+            ]
+        ),
+    ]
+
+    img = np.zeros((100, 100, 3), dtype=np.uint8)
+    hands, ar = extract_raw_hands_enhanced(img, detector, expect_two_hands=True)
+
+    assert len(hands) == 2
+    assert np.isclose(ar, 1.0)
+    # 0.5 in 25%-padded space (0.5 * 720 - 120) / 480 == 0.5 in original space
+    assert np.allclose(hands[0], 0.5, atol=1e-5)
+    assert np.allclose(hands[1], 0.5, atol=1e-5)

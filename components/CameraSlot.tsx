@@ -3,11 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HandLandmarker } from "@mediapipe/tasks-vision";
 import { speak } from "@/lib/audio";
+import { handsOf } from "@/lib/bisindo";
 import { loadAlphabetClassifier, type AlphabetClassifier } from "@/lib/cv/alphabetClassifier";
 import { detectVideoHands, drawHandLandmarks, loadHandLandmarker } from "@/lib/cv/handLandmarkerClient";
 import {
+  extractBisindo222Features,
   extractBisindo86Features,
+  FEATURE_DIM_V2,
   HoldPoseValidator,
+  shouldUseTwoHandSlotEnsemble,
   type HoldProgressState,
 } from "@/lib/cv/normalizeLandmarks";
 import { useProgress } from "@/lib/storage/useProgress";
@@ -16,7 +20,8 @@ type VideoMode = "idle" | "webcam" | "simulation";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 const HOLD_MS = 1500;
-const CONFIDENCE_THRESHOLD = 0.7;
+const SINGLE_HAND_CONFIDENCE_THRESHOLD = 0.68;
+const TWO_HAND_CONFIDENCE_THRESHOLD = 0.55;
 
 const EMPTY_HOLD_STATE: HoldProgressState = {
   topCandidates: [],
@@ -29,6 +34,25 @@ const EMPTY_HOLD_STATE: HoldProgressState = {
 function stopMediaStream(stream: MediaStream | null): void {
   if (!stream) return;
   stream.getTracks().forEach((track) => track.stop());
+}
+
+function drawSimulationContain(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  height: number,
+  dx = 0,
+  dy = 0,
+): void {
+  ctx.fillStyle = "#18181B";
+  ctx.fillRect(0, 0, width, height);
+  if (!img.complete || img.naturalWidth <= 0 || img.naturalHeight <= 0) return;
+  const scale = Math.min(width / img.naturalWidth, height / img.naturalHeight);
+  const drawW = img.naturalWidth * scale;
+  const drawH = img.naturalHeight * scale;
+  const offsetX = (width - drawW) * 0.5 + dx;
+  const offsetY = (height - drawH) * 0.5 + dy;
+  ctx.drawImage(img, offsetX, offsetY, drawW, drawH);
 }
 
 export default function CameraSlot({ letter }: { letter: string }) {
@@ -53,8 +77,9 @@ export default function CameraSlot({ letter }: { letter: string }) {
     new HoldPoseValidator({
       holdMs: HOLD_MS,
       minFrames: 5,
-      confidenceThreshold: CONFIDENCE_THRESHOLD,
-      smoothWindow: 4,
+      confidenceThreshold: SINGLE_HAND_CONFIDENCE_THRESHOLD,
+      smoothWindow: 5,
+      dropGraceMs: 320,
     }),
   );
 
@@ -150,7 +175,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
       const landmarker = landmarkerRef.current;
       const classifier = classifierRef.current;
 
-      // Keep offscreen simulation canvas streaming fresh frames.
+      // Keep offscreen simulation canvas streaming fresh frames with preserved aspect ratio.
       if (activeMode === "simulation" && offscreenCanvasRef.current && simImageRef.current) {
         const off = offscreenCanvasRef.current;
         const offCtx = off.getContext("2d");
@@ -158,9 +183,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
         if (offCtx && img.complete && img.naturalWidth > 0) {
           const dx = Math.sin(rafTime * 0.002) * 2;
           const dy = Math.cos(rafTime * 0.0017) * 2;
-          offCtx.fillStyle = "#18181B";
-          offCtx.fillRect(0, 0, off.width, off.height);
-          offCtx.drawImage(img, dx, dy, off.width, off.height);
+          drawSimulationContain(offCtx, img, off.width, off.height, dx, dy);
         }
       }
 
@@ -200,14 +223,40 @@ export default function CameraSlot({ letter }: { letter: string }) {
           }
         }
 
-        const features = extractBisindo86Features(hands);
+        const aspectRatio = video.videoWidth / Math.max(1, video.videoHeight);
+        const features =
+          classifier.inputDim === FEATURE_DIM_V2
+            ? extractBisindo222Features(hands, aspectRatio)
+            : extractBisindo86Features(hands);
+
         if (features) {
-          const probs = classifier.predictProbabilities(features);
+          let probs = classifier.predictProbabilities(features);
+          if (
+            classifier.inputDim === FEATURE_DIM_V2 &&
+            shouldUseTwoHandSlotEnsemble(hands, aspectRatio)
+          ) {
+            const swappedFeatures = extractBisindo222Features(hands, aspectRatio, true);
+            if (swappedFeatures) {
+              const swappedProbs = classifier.predictProbabilities(swappedFeatures);
+              const blended = new Float32Array(probs.length);
+              for (let i = 0; i < probs.length; i++) {
+                blended[i] = (probs[i] + swappedProbs[i]) * 0.5;
+              }
+              probs = blended;
+            }
+          }
+
+          const targetThreshold =
+            handsOf(targetLetterRef.current) === 2
+              ? TWO_HAND_CONFIDENCE_THRESHOLD
+              : SINGLE_HAND_CONFIDENCE_THRESHOLD;
+
           const nextState = validatorRef.current.update(
             probs,
             classifier.labels,
             targetLetterRef.current,
             nowMs,
+            targetThreshold,
           );
           setHoldState(nextState);
 
@@ -220,8 +269,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
             }
           }
         } else {
-          validatorRef.current.reset();
-          setHoldState(EMPTY_HOLD_STATE);
+          setHoldState(validatorRef.current.notifyNoHands(nowMs));
         }
       }
 
@@ -301,7 +349,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
 
       const offCtx = canvas.getContext("2d");
       if (offCtx && simImageRef.current) {
-        offCtx.drawImage(simImageRef.current, 0, 0, canvas.width, canvas.height);
+        drawSimulationContain(offCtx, simImageRef.current, canvas.width, canvas.height);
       }
 
       if (typeof canvas.captureStream !== "function") {
@@ -333,6 +381,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
     setMode("idle");
   }, [stopAll]);
 
+  const requiredHands = handsOf(letter);
   const isAlreadyLearned = data.bisindo.learnedLetters.includes(letter);
   const holdPercent = Math.round(holdState.progress * 100);
 
@@ -361,15 +410,31 @@ export default function CameraSlot({ letter }: { letter: string }) {
               <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full bg-current" aria-hidden="true" />
               {mode === "webcam" ? "LIVE WEBCAM" : `MODE SIMULASI (${simLetter})`}
             </span>
-            <span className="rounded-full border border-ink sm:border-2 bg-white px-2.5 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold text-ink">
-              {detectedHands === 0 ? "Belum ada tangan" : `${detectedHands} Tangan`}
+            <span
+              className={`rounded-full border border-ink sm:border-2 px-2.5 sm:px-3 py-0.5 sm:py-1 text-[10px] sm:text-xs font-bold text-ink ${
+                detectedHands >= requiredHands
+                  ? "bg-mint"
+                  : requiredHands === 2 && detectedHands === 1
+                    ? "bg-sun"
+                    : "bg-white"
+              }`}
+            >
+              {detectedHands === 0
+                ? `Belum ada tangan (butuh ${requiredHands})`
+                : `${detectedHands}/${requiredHands} Tangan`}
             </span>
           </div>
         )}
 
         {mode !== "idle" && !isLoadingEngine && detectedHands === 0 && (
           <div className="pointer-events-none absolute inset-x-3 sm:inset-x-4 bottom-2.5 sm:bottom-4 rounded-xl border border-white/20 bg-ink/85 px-3 sm:px-4 py-1.5 sm:py-2 text-center text-xs sm:text-sm text-white">
-            Arahkan 1 atau 2 tangan ke dalam kotak kamera
+            Arahkan {requiredHands === 2 ? "2 tangan" : "tangan"} ke dalam kotak kamera
+          </div>
+        )}
+
+        {mode !== "idle" && !isLoadingEngine && requiredHands === 2 && detectedHands === 1 && (
+          <div className="pointer-events-none absolute inset-x-3 sm:inset-x-4 bottom-2.5 sm:bottom-4 rounded-xl border border-sun/60 sm:border-2 bg-ink/90 px-3 sm:px-4 py-1.5 sm:py-2 text-center text-[11px] font-semibold text-sun sm:text-sm">
+            Huruf {letter} membutuhkan 2 tangan (baru 1 tangan terbaca). Jauhkan sedikit dari kamera agar kedua tangan terlihat jelas.
           </div>
         )}
 

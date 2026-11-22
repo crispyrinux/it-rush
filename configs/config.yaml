@@ -37,11 +37,14 @@ paths:
   raw_images_dir: data/raw_images
   webcam_npz: data/processed/webcam_landmarks.npz
   public_npz: data/processed/public_landmarks.npz
+  raw_hands_npz: data/processed/public_raw_hands.npz
   merged_npz: data/processed/bisindo_alphabet_dataset.npz
   wl_npz: data/processed/wl_landmarks.npz
   artifacts_dir: artifacts
   tflite_model: artifacts/bisindo_alphabet_model_f32.tflite
   labels_json: artifacts/bisindo_alphabet_labels.json
+  v2_tflite_model: artifacts/bisindo_alphabet_v2_f32.tflite
+  v2_labels_json: artifacts/bisindo_alphabet_v2_labels.json
   tfjs_dir: artifacts/tfjs
   public_models_dir: public/models/bisindo
   wl_tflite_model: artifacts/bisindo_wl_model.tflite

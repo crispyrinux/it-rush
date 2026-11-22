@@ -3,14 +3,18 @@ import pytest
 
 from bisindo.features import (
     FEATURE_DIM,
+    FEATURE_DIM_V2,
     NUM_HAND_FEATURES,
     NUM_LANDMARKS,
+    TWO_HAND_LETTERS,
     add_landmark_jitter,
+    build_bisindo_v2_features,
     build_single_hand_features,
     build_two_hand_features,
     flip_and_swap_features,
     make_single_hand_fallback,
     normalize_hand_bohacek,
+    transform_hands_raw,
 )
 
 
@@ -116,3 +120,57 @@ def test_add_landmark_jitter_does_not_mutate_and_keeps_zeros():
     assert np.allclose(jittered[42:86], 0.0)
     assert jittered[:42].min() >= 0.0
     assert jittered[:42].max() <= 1.0
+
+
+def test_build_bisindo_v2_features_single_hand_zero_pads():
+    hand = _make_hand(0.3, 0.4, scale=0.25)
+    feat = build_bisindo_v2_features([hand], aspect_ratio=1.0)
+
+    assert feat.shape == (FEATURE_DIM_V2,)
+    assert feat.dtype == np.float32
+    assert np.allclose(feat[42:84], 0.0)
+    assert np.allclose(feat[84:126], feat[0:42])
+    assert np.allclose(feat[126:217], 0.0)
+    assert np.allclose(feat[217:222], [0.0, 0.0, 0.0, 1.0, 0.0])
+
+
+def test_build_bisindo_v2_features_invariant_to_distance_and_aspect_ratio():
+    left_hand = _make_hand(0.15, 0.30, scale=0.20)
+    right_hand = _make_hand(0.55, 0.40, scale=0.22)
+
+    base = build_bisindo_v2_features([right_hand, left_hand], aspect_ratio=1.0)
+    base_lr = build_bisindo_v2_features([left_hand, right_hand], aspect_ratio=1.0)
+    assert np.allclose(base, base_lr, atol=1e-5)
+    assert base[217] == 1.0
+    assert base[218] >= 0.0
+
+    # Shrink both hands toward frame center (webcam further away) and stretch to 16:9
+    shrunk, new_ar = transform_hands_raw(
+        [left_hand, right_hand],
+        aspect_ratio=1.0,
+        scale_dist=0.40,
+        aspect_mult=16.0 / 9.0,
+    )
+    feat_remote = build_bisindo_v2_features(shrunk, aspect_ratio=new_ar)
+    assert np.allclose(base, feat_remote, atol=1e-4)
+
+    swapped = build_bisindo_v2_features([left_hand, right_hand], aspect_ratio=1.0, swap_slots=True)
+    assert np.allclose(swapped[0:42], base[42:84], atol=1e-5)
+    assert swapped[218] <= 0.0
+
+
+def test_transform_hands_raw_does_not_mutate_and_has_16_two_hand_letters():
+    assert len(TWO_HAND_LETTERS) == 16
+    hand = _make_hand(0.2, 0.3, scale=0.25)
+    orig = hand.copy()
+    transformed, new_ar = transform_hands_raw(
+        [hand],
+        aspect_ratio=1.0,
+        flip=True,
+        rot_deg=10.0,
+        scale_dist=0.5,
+        aspect_mult=4.0 / 3.0,
+    )
+    assert np.array_equal(hand, orig)
+    assert np.isclose(new_ar, 4.0 / 3.0)
+    assert transformed[0].shape == (NUM_LANDMARKS, 2)

@@ -54,7 +54,12 @@ interface BatchNormLayerRuntime {
   variance: Float32Array;
 }
 
-type RuntimeLayer = DenseLayerRuntime | BatchNormLayerRuntime;
+interface ActivationLayerRuntime {
+  kind: "Activation";
+  activation: string;
+}
+
+type RuntimeLayer = DenseLayerRuntime | BatchNormLayerRuntime | ActivationLayerRuntime;
 
 export interface AlphabetClassifier {
   labels: string[];
@@ -122,10 +127,69 @@ function buildRuntimeLayers(
         mean,
         variance,
       });
+    } else if (layer.class_name === "Activation") {
+      runtime.push({
+        kind: "Activation",
+        activation: layer.config.activation ?? "linear",
+      });
+    } else if (layer.class_name === "ReLU") {
+      runtime.push({
+        kind: "Activation",
+        activation: "relu",
+      });
     }
   }
 
   return runtime;
+}
+
+function applySoftmaxInPlace(values: Float32Array): void {
+  let maxVal = -Infinity;
+  for (let j = 0; j < values.length; j++) {
+    if (values[j] > maxVal) maxVal = values[j];
+  }
+  let sumExp = 0;
+  for (let j = 0; j < values.length; j++) {
+    const expVal = Math.exp(values[j] - maxVal);
+    values[j] = expVal;
+    sumExp += expVal;
+  }
+  const denom = sumExp > 0 ? sumExp : 1;
+  for (let j = 0; j < values.length; j++) {
+    values[j] /= denom;
+  }
+}
+
+function applyActivation(input: Float32Array, activation: string): Float32Array {
+  if (activation === "linear") {
+    return input;
+  }
+  const out = new Float32Array(input.length);
+  if (activation === "relu") {
+    for (let i = 0; i < input.length; i++) {
+      out[i] = input[i] > 0 ? input[i] : 0;
+    }
+    return out;
+  }
+  if (activation === "tanh") {
+    for (let i = 0; i < input.length; i++) {
+      out[i] = Math.tanh(input[i]);
+    }
+    return out;
+  }
+  if (activation === "sigmoid") {
+    for (let i = 0; i < input.length; i++) {
+      out[i] = 1 / (1 + Math.exp(-input[i]));
+    }
+    return out;
+  }
+  if (activation === "softmax") {
+    out.set(input);
+    applySoftmaxInPlace(out);
+    return out;
+  }
+  out.set(input);
+  return out;
 }
 
 function applyDense(input: Float32Array, layer: DenseLayerRuntime): Float32Array {
@@ -153,20 +217,7 @@ function applyDense(input: Float32Array, layer: DenseLayerRuntime): Float32Array
       if (out[j] < 0) out[j] = 0;
     }
   } else if (activation === "softmax") {
-    let maxVal = -Infinity;
-    for (let j = 0; j < outDim; j++) {
-      if (out[j] > maxVal) maxVal = out[j];
-    }
-    let sumExp = 0;
-    for (let j = 0; j < outDim; j++) {
-      const expVal = Math.exp(out[j] - maxVal);
-      out[j] = expVal;
-      sumExp += expVal;
-    }
-    const denom = sumExp > 0 ? sumExp : 1;
-    for (let j = 0; j < outDim; j++) {
-      out[j] /= denom;
-    }
+    applySoftmaxInPlace(out);
   }
 
   return out;
@@ -184,7 +235,7 @@ function applyBatchNorm(input: Float32Array, layer: BatchNormLayerRuntime): Floa
 let cachedPromise: Promise<AlphabetClassifier> | null = null;
 
 /**
- * Load and cache the BISINDO 86-dim TF.js classifier from `/models/bisindo/`.
+ * Load and cache the BISINDO TF.js classifier from `/models/bisindo/`.
  */
 export function loadAlphabetClassifier(basePath = "/models/bisindo"): Promise<AlphabetClassifier> {
   if (!cachedPromise || basePath !== "/models/bisindo") {
@@ -227,7 +278,13 @@ export function loadAlphabetClassifier(basePath = "/models/bisindo"): Promise<Al
         predictProbabilities(features: Float32Array): Float32Array {
           let x = features;
           for (const layer of runtimeLayers) {
-            x = layer.kind === "Dense" ? applyDense(x, layer) : applyBatchNorm(x, layer);
+            if (layer.kind === "Dense") {
+              x = applyDense(x, layer);
+            } else if (layer.kind === "BatchNormalization") {
+              x = applyBatchNorm(x, layer);
+            } else {
+              x = applyActivation(x, layer.activation);
+            }
           }
           return x;
         },

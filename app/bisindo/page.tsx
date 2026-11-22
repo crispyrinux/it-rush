@@ -22,6 +22,13 @@ const modes: { id: Mode; icon: Icon; label: string; desc: string }[] = [
   { id: "guess", icon: HelpCircle, label: "Guess the Sign", desc: "Tebak huruf dari isyarat" },
 ];
 
+const LETTER_TIPS: Record<string, string> = {
+  J: "J digerakkan melengkung di udara. Untuk kamera, tahan pose akhir (kelingking ke samping).",
+  D: "Tahan 1 jari telunjuk tegak lurus, lalu sentuhkan ujung telunjuk dan ibu jari tangan satunya ke bagian atas dan bawah telunjuk tersebut. Beri jarak ±50 cm dari kamera.",
+  T: "Tempelkan ujung telunjuk vertikal tepat di tengah bawah telunjuk horizontal tangan lainnya, pastikan kedua pergelangan terlihat jelas di kamera.",
+  Y: "Jauhkan sedikit (±50 cm) dan miringkan sedikit kedua telapak agar telunjuk serta sela jempol tidak saling menutupi penuh sehingga kedua tangan terbaca.",
+};
+
 function NatureIllustration() {
   return (
     <div
@@ -601,11 +608,10 @@ export default function BisindoPage() {
                     </button>
                   </div>
 
-                  {/* Catatan khusus huruf J */}
-                  {sel === "J" && (
+                  {/* Tips pose khusus huruf sulit / dinamis */}
+                  {LETTER_TIPS[sel] && (
                     <p className="mt-2.5 rounded-xl border-2 border-ink/10 bg-sun p-2.5 text-xs leading-snug">
-                      <strong>Catatan:</strong> J digerakkan melengkung di udara.
-                      Untuk kamera, tahan pose akhir (kelingking ke samping).
+                      <strong>Tips:</strong> {LETTER_TIPS[sel]}
                     </p>
                   )}
                 </div>
