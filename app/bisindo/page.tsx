@@ -4,7 +4,6 @@
 import { useEffect, useState } from "react";
 import CameraSlot from "@/components/CameraSlot";
 import WordCameraSlot from "@/components/WordCameraSlot";
-import WordDemoCard from "@/components/WordDemoCard";
 import GuessTheSign from "@/components/GuessTheSign";
 import SignGallery from "@/components/SignGallery";
 import Reveal from "@/components/Reveal";
@@ -166,17 +165,6 @@ function EnvironmentContext() {
         />
       </section>
     </Reveal>
-  );
-}
-
-function StepHeader({ step, title }: { step: string; title: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="shrink-0 rounded-full border-2 border-ink bg-grape px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-white">
-        STEP {step}
-      </span>
-      <h2 className="text-lg font-bold leading-tight">{title}</h2>
-    </div>
   );
 }
 
@@ -589,9 +577,17 @@ export default function BisindoPage() {
         <div className="space-y-2 sm:space-y-2.5 lg:sticky lg:top-[6.75rem] lg:max-h-[calc(100dvh-7.25rem)] lg:self-start lg:overflow-y-auto lg:pb-2 lg:pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {selectedWord ? (
             <>
-              <StepHeader step="01" title="Kenali Kosakata" />
+              <div className="flex items-center justify-between px-1">
+                <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-ink">
+                  <span className="inline-block h-2 w-2 rounded-full bg-grape animate-pulse" />
+                  Praktik Kosakata Dinamis
+                </span>
+                <span className="text-[11px] font-medium text-ink/65">
+                  Amati contoh &amp; praktikkan lewat kamera
+                </span>
+              </div>
 
-              <WordDemoCard
+              <WordCameraSlot
                 word={selectedWord}
                 isLearned={learnedWords.includes(selectedWord.id)}
                 demo={wordDemos[selectedWord.id]}
@@ -600,10 +596,6 @@ export default function BisindoPage() {
                   speak(selectedWord.title, data.settings.audioEnabled)
                 }
               />
-
-              <StepHeader step="02" title="Praktikkan Gerakan" />
-
-              <WordCameraSlot word={selectedWord} />
             </>
           ) : (
             <>
