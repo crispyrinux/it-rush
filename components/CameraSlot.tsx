@@ -399,7 +399,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
 
   return (
     <div className="card overflow-hidden bg-ink p-2.5 text-white sm:p-3.5">
-      <div className="relative aspect-[16/9] max-h-[22dvh] sm:max-h-[26dvh] min-h-[140px] w-full overflow-hidden rounded-xl sm:rounded-2xl border-2 border-white/20 bg-black/50">
+      <div className="relative aspect-[16/9] max-h-[26dvh] sm:max-h-[31dvh] min-h-[160px] w-full overflow-hidden rounded-xl sm:rounded-2xl border-2 border-white/20 bg-black/50">
         <video
           ref={videoRef}
           muted
