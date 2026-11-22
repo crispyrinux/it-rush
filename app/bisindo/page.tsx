@@ -586,7 +586,7 @@ export default function BisindoPage() {
         </div>
 
         {/* RIGHT COLUMN: REFERENCE AND CAMERA */}
-        <div className="space-y-3 lg:sticky lg:top-[6.75rem] lg:max-h-[calc(100dvh-7.25rem)] lg:self-start lg:overflow-y-auto lg:pb-2 lg:pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="space-y-2 sm:space-y-2.5 lg:sticky lg:top-[6.75rem] lg:max-h-[calc(100dvh-7.25rem)] lg:self-start lg:overflow-y-auto lg:pb-2 lg:pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {selectedWord ? (
             <>
               <StepHeader step="01" title="Kenali Kosakata" />
@@ -607,57 +607,67 @@ export default function BisindoPage() {
             </>
           ) : (
             <>
-              <StepHeader step="01" title="Kenali Bentuk Isyarat" />
-
-              {/* LETTER REFERENCE */}
+              {/* COMPACT REFERENCE & PRACTICE HEADER */}
               <div
                 key={sel}
-                className="card animate-pop flex flex-col items-center gap-4 bg-white p-3.5 sm:flex-row sm:items-center sm:p-4"
+                className="card animate-pop flex items-center justify-between gap-3 bg-white p-2.5 sm:p-3"
               >
-                <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-ink bg-sun/20 p-1 shadow-[3px_3px_0px_#1B1B3A] sm:h-36 sm:w-36 lg:h-[clamp(6.5rem,16dvh,9.5rem)] lg:w-[clamp(6.5rem,16dvh,9.5rem)]">
-                  <img
-                    src={`/images/bisindo/${sel}.webp`}
-                    alt={`Contoh pose tangan huruf BISINDO ${sel}`}
-                    className="h-full w-full rounded-xl object-contain brightness-[1.12] contrast-[1.04]"
-                  />
-                </div>
-
-                <div className="w-full min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-4 border-ink bg-grape font-display text-2xl font-bold text-white shadow-[3px_3px_0px_#1B1B3A]">
-                        {sel}
-                      </span>
-
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-bold leading-tight">Huruf {sel}</h3>
-                        <span className="mt-0.5 inline-block rounded-full border-2 border-ink bg-mint px-2.5 py-0.5 text-xs font-semibold">
-                          {handsOf(sel)} Tangan
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => speak(sel, data.settings.audioEnabled)}
-                      className="btn !min-h-[40px] !px-3 bg-sun"
-                      aria-label={`Dengarkan huruf ${sel}`}
-                    >
-                      <Volume2 className="h-4 w-4" />
-                    </button>
+                <div className="flex items-center gap-3 min-w-0">
+                  {/* Thumbnail foto contoh */}
+                  <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-ink bg-sun/20 p-0.5 shadow-[2px_2px_0px_#1B1B3A]">
+                    <img
+                      src={`/images/bisindo/${sel}.webp`}
+                      alt={`Contoh pose tangan huruf BISINDO ${sel}`}
+                      className="h-full w-full rounded-lg object-contain brightness-[1.12] contrast-[1.04]"
+                    />
                   </div>
 
-                  {/* Tips pose khusus huruf sulit / dinamis */}
-                  {LETTER_TIPS[sel] && (
-                    <p className="mt-2.5 rounded-xl border-2 border-ink/10 bg-sun p-2.5 text-xs leading-snug">
-                      <strong>Tips:</strong> {LETTER_TIPS[sel]}
-                    </p>
-                  )}
+                  {/* Info Huruf & Badge */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-ink bg-grape font-display text-lg font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
+                        {sel}
+                      </span>
+                      <h3 className="text-base sm:text-lg font-bold leading-tight truncate">Huruf {sel}</h3>
+                      <span className="rounded-full border border-ink sm:border-2 bg-mint px-2 py-0.5 text-[10px] sm:text-xs font-semibold whitespace-nowrap">
+                        {handsOf(sel)} Tangan
+                      </span>
+                    </div>
+
+                    {/* Tips pose jika ada */}
+                    {LETTER_TIPS[sel] ? (
+                      <p className="mt-1 line-clamp-1 text-[11px] text-ink/75" title={LETTER_TIPS[sel]}>
+                        <strong className="text-ink">Tips:</strong> {LETTER_TIPS[sel]}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-[11px] text-ink/60">
+                        Arahkan isyarat tangan ke kamera
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                {/* Tombol Suara */}
+                <button
+                  type="button"
+                  onClick={() => speak(sel, data.settings.audioEnabled)}
+                  className="btn !min-h-[36px] !h-9 !w-9 !p-0 shrink-0 bg-sun"
+                  aria-label={`Dengarkan huruf ${sel}`}
+                >
+                  <Volume2 className="h-4 w-4" />
+                </button>
               </div>
 
-              {/* CAMERA PRACTICE */}
-              <StepHeader step="02" title="Praktikkan Melalui Kamera" />
+              {/* CAMERA PRACTICE STEP HEADER (COMPACT) */}
+              <div className="flex items-center justify-between px-0.5">
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-ink/70">
+                  <span className="h-2 w-2 rounded-full bg-coral animate-pulse" />
+                  Praktik Kamera
+                </span>
+                <span className="text-[11px] text-ink/60 hidden sm:inline">
+                  Pastikan tangan terlihat di dalam kotak kamera
+                </span>
+              </div>
 
               <CameraSlot letter={sel} />
             </>

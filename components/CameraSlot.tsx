@@ -398,8 +398,8 @@ export default function CameraSlot({ letter }: { letter: string }) {
   const holdPercent = Math.round(holdState.progress * 100);
 
   return (
-    <div className="card overflow-hidden bg-ink p-2.5 text-white sm:p-4">
-      <div className="relative aspect-[16/10] max-h-[30dvh] sm:max-h-[36dvh] min-h-[160px] w-full overflow-hidden rounded-xl sm:rounded-2xl border-2 border-white/20 bg-black/50">
+    <div className="card overflow-hidden bg-ink p-2.5 text-white sm:p-3.5">
+      <div className="relative aspect-[16/9] max-h-[22dvh] sm:max-h-[26dvh] min-h-[140px] w-full overflow-hidden rounded-xl sm:rounded-2xl border-2 border-white/20 bg-black/50">
         <video
           ref={videoRef}
           muted
@@ -511,11 +511,11 @@ export default function CameraSlot({ letter }: { letter: string }) {
       {mode !== "idle" && (
         <div className="mt-2 space-y-2">
           {/* KONTROL: tepat di bawah video agar selalu terlihat */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <button
               type="button"
               onClick={() => setShowLandmarks((prev) => !prev)}
-              className="btn !min-h-[44px] !px-4 !text-sm bg-white text-ink"
+              className="btn !min-h-[36px] sm:!min-h-[38px] !px-3 !text-xs sm:!text-sm bg-white text-ink"
             >
               {showLandmarks ? "Sembunyikan Titik Jari" : "Tampilkan Titik Jari"}
             </button>
@@ -524,7 +524,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
               <button
                 type="button"
                 onClick={startSimulation}
-                className="btn !min-h-[44px] !px-4 !text-sm bg-sun text-ink"
+                className="btn !min-h-[36px] sm:!min-h-[38px] !px-3 !text-xs sm:!text-sm bg-sun text-ink"
               >
                 Coba Simulasi
               </button>
@@ -533,11 +533,11 @@ export default function CameraSlot({ letter }: { letter: string }) {
                 <button
                   type="button"
                   onClick={startWebcam}
-                  className="btn !min-h-[44px] !px-4 !text-sm bg-sun text-ink"
+                  className="btn !min-h-[36px] sm:!min-h-[38px] !px-3 !text-xs sm:!text-sm bg-sun text-ink"
                 >
                   Pakai Kamera
                 </button>
-                <label className="flex min-h-[44px] items-center gap-2 rounded-full border-2 border-white/30 bg-white/10 px-3 text-sm font-semibold">
+                <label className="flex min-h-[36px] sm:min-h-[38px] items-center gap-1.5 rounded-full border-2 border-white/30 bg-white/10 px-2.5 text-xs font-semibold">
                   <span>Klip:</span>
                   <select
                     aria-label="Pilih huruf video simulasi"
@@ -546,7 +546,7 @@ export default function CameraSlot({ letter }: { letter: string }) {
                       validatorRef.current.reset();
                       setSimLetter(e.target.value);
                     }}
-                    className="rounded-lg bg-ink px-2 py-1 text-white"
+                    className="rounded-lg bg-ink px-1.5 py-0.5 text-white text-xs"
                   >
                     {ALPHABET.map((l) => (
                       <option key={l} value={l}>
@@ -561,88 +561,95 @@ export default function CameraSlot({ letter }: { letter: string }) {
             <button
               type="button"
               onClick={handleStop}
-              className="btn !min-h-[44px] !px-4 !text-sm ml-auto bg-coral text-white"
+              className="btn !min-h-[36px] sm:!min-h-[38px] !px-3 !text-xs sm:!text-sm ml-auto bg-coral text-white"
             >
               Matikan
             </button>
           </div>
 
-          {justCompleted ? (
-            <div
-              role="status"
-              aria-live="polite"
-              className={`flex h-[60px] items-center justify-between gap-2 rounded-2xl border-2 border-ink px-3 text-ink ${
-                mode === "webcam" ? "bg-mint" : "bg-sky"
-              }`}
-            >
-              <span className="font-display text-sm font-bold sm:text-base">
-                {mode === "webcam"
-                  ? `Huruf ${letter} Berhasil Dikuasai! (+10 XP)`
-                  : `Simulasi Huruf ${simLetter} Terbaca (Gunakan Kamera untuk Progres)`}
-              </span>
-              <span className="shrink-0 rounded-full bg-white px-3 py-1 text-xs font-bold">
-                {mode === "webcam" ? "SELESAI" : "SIMULASI"}
-              </span>
-            </div>
-          ) : (
-            <div className="flex h-[60px] flex-col justify-center rounded-2xl border-2 border-white/20 bg-white/10 px-3">
-              <div className="flex items-center justify-between gap-2 text-sm font-semibold">
-                <span>
-                  Target: Huruf <strong className="text-sun">{letter}</strong>
-                  {isAlreadyLearned ? " (Sudah Dikuasai)" : ""}
+          {/* COMBINED TARGET PROGRESS & PREDIKSI AI (SINGLE CARD) */}
+          <div className="rounded-xl border-2 border-white/20 bg-white/10 p-2 sm:p-2.5">
+            {justCompleted ? (
+              <div
+                role="status"
+                aria-live="polite"
+                className={`flex h-10 sm:h-11 items-center justify-between gap-2 rounded-lg border-2 border-ink px-3 text-ink ${
+                  mode === "webcam" ? "bg-mint" : "bg-sky"
+                }`}
+              >
+                <span className="font-display text-xs sm:text-sm font-bold truncate">
+                  {mode === "webcam"
+                    ? `Huruf ${letter} Berhasil Dikuasai! (+10 XP)`
+                    : `Simulasi Huruf ${simLetter} Terbaca`}
                 </span>
-                <span className="shrink-0 tabular-nums">{holdPercent}% (Tahan 1,5 dtk)</span>
+                <span className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[10px] sm:text-xs font-bold">
+                  {mode === "webcam" ? "SELESAI" : "SIMULASI"}
+                </span>
               </div>
-              <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-black/50">
-                <div
-                  className="h-full rounded-full bg-mint transition-all duration-100"
-                  style={{ width: `${holdPercent}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex h-[52px] items-center gap-2 rounded-2xl border-2 border-white/20 bg-white/10 px-3">
-            <p className="w-12 shrink-0 text-[10px] font-semibold uppercase leading-tight tracking-wider text-white/75">
-              Prediksi AI
-            </p>
-            <div className="flex flex-1 justify-end gap-2" aria-live="off">
-              {Array.from({ length: 3 }).map((_, i) => {
-                const cand = holdState.topCandidates[i];
-                const base =
-                  "flex h-8 w-[4.75rem] shrink-0 items-center justify-center gap-1.5 rounded-lg border-2 tabular-nums";
-                if (!cand) {
-                  return (
-                    <div
-                      key={i}
-                      className={`${base} border-white/10 bg-black/20 text-white/40`}
-                      aria-hidden="true"
-                    >
-                      <span className="font-display text-base font-bold">–</span>
-                    </div>
-                  );
-                }
-                const pct = Math.round(cand.confidence * 100);
-                const isTarget = cand.label === letter;
-                return (
-                  <div
-                    key={i}
-                    className={`${base} ${
-                      isTarget
-                        ? "border-mint bg-mint/20 text-white"
-                        : i === 0
-                          ? "border-sun/70 bg-white/10 text-white"
-                          : "border-white/15 bg-black/30 text-white/80"
-                    }`}
-                  >
-                    <span className="w-4 text-center font-display text-base font-bold">
-                      {cand.label}
+            ) : (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                {/* Target & Hold Progress Bar */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+                    <span className="truncate">
+                      Target: Huruf <strong className="text-sun">{letter}</strong>
+                      {isAlreadyLearned ? " (Dikuasai)" : ""}
                     </span>
-                    <span className="w-9 text-right text-xs font-semibold">{pct}%</span>
+                    <span className="shrink-0 tabular-nums text-mint font-bold text-[11px] sm:text-xs">
+                      {holdPercent}% <span className="text-white/60 font-normal">(1,5s)</span>
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-black/50">
+                    <div
+                      className="h-full rounded-full bg-mint transition-all duration-100"
+                      style={{ width: `${holdPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Prediksi AI */}
+                <div className="flex items-center justify-end gap-1.5 shrink-0" aria-live="off">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-white/60 mr-0.5 hidden md:inline">
+                    AI:
+                  </span>
+                  {Array.from({ length: 3 }).map((_, i) => {
+                    const cand = holdState.topCandidates[i];
+                    const base =
+                      "flex h-7 w-[4.1rem] sm:w-[4.4rem] shrink-0 items-center justify-center gap-1 rounded-lg border-2 tabular-nums text-xs";
+                    if (!cand) {
+                      return (
+                        <div
+                          key={i}
+                          className={`${base} border-white/10 bg-black/20 text-white/40`}
+                          aria-hidden="true"
+                        >
+                          <span className="font-display text-sm font-bold">–</span>
+                        </div>
+                      );
+                    }
+                    const pct = Math.round(cand.confidence * 100);
+                    const isTarget = cand.label === letter;
+                    return (
+                      <div
+                        key={i}
+                        className={`${base} ${
+                          isTarget
+                            ? "border-mint bg-mint/20 text-white font-bold"
+                            : i === 0
+                              ? "border-sun/70 bg-white/10 text-white"
+                              : "border-white/15 bg-black/30 text-white/80"
+                        }`}
+                      >
+                        <span className="font-display font-bold text-sm">
+                          {cand.label}
+                        </span>
+                        <span className="text-[10px] opacity-90">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
