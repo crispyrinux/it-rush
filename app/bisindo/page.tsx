@@ -236,7 +236,10 @@ export default function BisindoPage() {
   const { data } = useProgress();
 
   const learned = data.bisindo.learnedLetters;
-  const learnedWords = data.bisindo.learnedWords ?? [];
+  const activeWordIds = new Set(WORD_ITEMS.map((w) => w.id));
+  const learnedWords = (data.bisindo.learnedWords ?? []).filter((id) =>
+    activeWordIds.has(id)
+  );
 
   const selectedWord =
     selState.kind === "word"

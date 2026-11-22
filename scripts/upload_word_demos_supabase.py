@@ -19,10 +19,11 @@ from bisindo.word_demos import (
     DEFAULT_BUCKET,
     DEFAULT_TABLE,
     FORMAT_MIME_TYPES,
-    WORD_DEMO_SPECS,
     EncodedWordDemo,
     build_word_demo_row,
+    delete_stale_word_demo_rows,
     load_env_file,
+    load_word_demo_specs,
     prepare_all_word_demos,
     upload_file_to_supabase_storage,
     upsert_word_demo_rows,
@@ -100,9 +101,11 @@ def _resolve_credentials(env_file: Path) -> tuple[str, str]:
 def main() -> int:
     args = parse_args()
 
+    active_specs = load_word_demo_specs()
+
     if args.skip_encode:
         demos = []
-        for spec in WORD_DEMO_SPECS:
+        for spec in active_specs:
             object_name = f"{spec.word_id}.{args.format}"
             path = args.output_dir / object_name
             if not path.is_file():
@@ -117,7 +120,7 @@ def main() -> int:
                 )
             )
     else:
-        demos = prepare_all_word_demos(args.raw_dir, args.output_dir, fmt=args.format)
+        demos = prepare_all_word_demos(args.raw_dir, args.output_dir, fmt=args.format, specs=active_specs)
 
     print(f"Prepared {len(demos)} looping {args.format.upper()} animations in {args.output_dir}:")
     for demo in demos:
@@ -156,7 +159,13 @@ def main() -> int:
         rows=rows,
         table=args.table,
     )
-    print(f"Upserted {len(rows)} rows into public.{args.table}.")
+    delete_stale_word_demo_rows(
+        supabase_url=supabase_url,
+        service_role_key=service_key,
+        keep_word_ids=[spec.word_id for spec in active_specs],
+        table=args.table,
+    )
+    print(f"Upserted {len(rows)} rows into public.{args.table} (stale rows pruned).")
     return 0
 
 

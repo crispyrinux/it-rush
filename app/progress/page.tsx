@@ -112,9 +112,13 @@ export default function ProgressPage() {
 
   const level = Math.floor(data.xp / 100) + 1;
   const nextLevelXp = level * 100;
+  const activeWordIds = new Set(WORD_ITEMS.map((w) => w.id));
+  const learnedActiveWords = (data.bisindo.learnedWords ?? []).filter((id) =>
+    activeWordIds.has(id)
+  );
   const totalMaterialsLearned =
     data.bisindo.learnedLetters.length +
-    (data.bisindo.learnedWords ?? []).length +
+    learnedActiveWords.length +
     data.braille.learnedLetters.length;
 
   const currentAvatarId = data.auth.user?.avatarId || data.settings.avatarId || "owli";
@@ -611,7 +615,7 @@ export default function ProgressPage() {
             Kosakata Dasar BISINDO
           </h2>
           <span className="rounded-full border-2 border-ink bg-mint px-3 py-1 text-xs font-bold text-ink">
-            {(data.bisindo.learnedWords ?? []).length}/{WORD_ITEMS.length} dikuasai
+            {learnedActiveWords.length}/{WORD_ITEMS.length} dikuasai
           </span>
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

@@ -1,3 +1,5 @@
+import wordCatalog from "./bisindoWords.json";
+
 export const ONE_HAND = ["C", "E", "I", "J", "L", "O", "R", "U", "V", "Z"];
 
 export const UNITS = [
@@ -14,55 +16,15 @@ export interface WordItem {
   title: string;
   hands: 1 | 2;
   guide: string;
+  localVideoPath?: string;
 }
 
-export const WORD_ITEMS: WordItem[] = [
-  {
-    id: "pantai",
-    title: "Pantai",
-    hands: 2,
-    guide: "Arahkan kedua telapak tangan menghadap ke bawah di depan dada, lalu gerakkan bergelombang dari samping ke samping seperti ombak pantai.",
-  },
-  {
-    id: "belajar",
-    title: "Belajar",
-    hands: 2,
-    guide: "Buka satu telapak tangan sebagai buku lalu gerakkan jari tangan lain dari telapak ke arah dahi.",
-  },
-  {
-    id: "hari",
-    title: "Hari",
-    hands: 1,
-    guide: "Angkat jari telunjuk ke atas lalu gerakkan melengkung ke samping mengikuti arah matahari.",
-  },
-  {
-    id: "maaf",
-    title: "Maaf",
-    hands: 2,
-    guide: "Tempelkan kedua ujung telapak tangan di depan dada lalu gerakkan sedikit ke depan.",
-  },
-  {
-    id: "makan",
-    title: "Makan",
-    hands: 1,
-    guide: "Kuncupkan jari-jari tangan kanan lalu arahkan berulang kali mendekati mulut.",
-  },
-  {
-    id: "saya",
-    title: "Saya",
-    hands: 1,
-    guide: "Buka atau arahkan tangan kanan menunjuk langsung ke tengah dada sendiri.",
-  },
-  {
-    id: "terima_kasih",
-    title: "Terima Kasih",
-    hands: 2,
-    guide: "Sentuh area dagu dengan jari lalu ayunkan tangan ke depan ke arah lawan bicara.",
-  },
-  {
-    id: "tuli",
-    title: "Tuli",
-    hands: 1,
-    guide: "Arahkan jari telunjuk menyentuh area telinga lalu gerakkan perlahan menuju sudut mulut.",
-  },
-];
+export const WORD_MODEL_VERSION: string = wordCatalog.modelVersion;
+
+export const WORD_ITEMS: WordItem[] = wordCatalog.words.map((item) => ({
+  id: item.id,
+  title: item.title,
+  hands: item.hands === 1 ? 1 : 2,
+  guide: item.guide,
+  localVideoPath: item.localVideoPath,
+}));

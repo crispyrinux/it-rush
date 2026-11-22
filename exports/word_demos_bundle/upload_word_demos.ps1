@@ -59,14 +59,17 @@ if (-not $supabaseUrl -or -not $serviceKey -or $supabaseUrl -like "*your-project
 $supabaseUrl = $supabaseUrl.TrimEnd("/")
 
 $words = @(
-  @{ word_id = "pantai";       title = "Pantai" },
-  @{ word_id = "belajar";      title = "Belajar" },
-  @{ word_id = "hari";         title = "Hari" },
-  @{ word_id = "maaf";         title = "Maaf" },
-  @{ word_id = "makan";        title = "Makan" },
-  @{ word_id = "saya";         title = "Saya" },
-  @{ word_id = "terima_kasih"; title = "Terima Kasih" },
-  @{ word_id = "tuli";         title = "Tuli" }
+  @{ word_id = "alam"; title = "Alam" },
+  @{ word_id = "ancaman"; title = "Ancaman" },
+  @{ word_id = "bencana"; title = "Bencana" },
+  @{ word_id = "dampak"; title = "Dampak" },
+  @{ word_id = "degradasi"; title = "Degradasi" },
+  @{ word_id = "iklim"; title = "Iklim" },
+  @{ word_id = "lingkungan"; title = "Lingkungan" },
+  @{ word_id = "mitigasi"; title = "Mitigasi" },
+  @{ word_id = "pemulihan"; title = "Pemulihan" },
+  @{ word_id = "perubahan"; title = "Perubahan" },
+  @{ word_id = "sumber_daya"; title = "Sumber Daya" }
 )
 
 $storageHeaders = @{
@@ -78,7 +81,7 @@ $storageHeaders = @{
 
 $rows = @()
 
-Write-Host "Mengunggah 8 video animasi ke Supabase Storage bucket '$Bucket'..."
+Write-Host "Mengunggah $($words.Count) video animasi ke Supabase Storage bucket '$Bucket'..."
 foreach ($w in $words) {
   $objectName = "$($w.word_id).mp4"
   $filePath = Join-Path $videoDir $objectName
@@ -109,6 +112,9 @@ $dbHeaders = @{
 }
 $body = ConvertTo-Json -InputObject @($rows) -Depth 4
 Invoke-RestMethod -Method Post -Uri "$supabaseUrl/rest/v1/${Table}?on_conflict=word_id" -Headers $dbHeaders -ContentType "application/json" -Body $body | Out-Null
+
+Write-Host "Menghapus kosakata lama yang tidak lagi dipakai di public.$Table..."
+Invoke-RestMethod -Method Delete -Uri "$supabaseUrl/rest/v1/${Table}?word_id=not.in.(alam,ancaman,bencana,dampak,degradasi,iklim,lingkungan,mitigasi,pemulihan,perubahan,sumber_daya)" -Headers $dbHeaders | Out-Null
 
 Write-Host ""
 Write-Host "SELESAI! $($rows.Count) video berhasil diunggah ke bucket '$Bucket' dan URL publiknya tersimpan di public.$Table."

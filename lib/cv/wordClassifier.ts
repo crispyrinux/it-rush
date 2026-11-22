@@ -5,6 +5,7 @@
  * `public/models/bisindo/bisindo_wl_model.tflite` bit-for-bit within float32 tolerance.
  */
 
+import { WORD_ITEMS, WORD_MODEL_VERSION } from "@/lib/bisindo";
 import type { NormalizedLandmark2D } from "./normalizeLandmarks";
 
 export const WL_SEQUENCE_LEN = 30;
@@ -41,19 +42,20 @@ export interface WordClassifier {
   predictProbabilities: (inputSeq30x300: Float32Array) => Float32Array;
 }
 
-const WORD_DISPLAY_NAMES: Record<string, string> = {
-  pantai: "Pantai",
-  belajar: "Belajar",
-  hari: "Hari",
-  maaf: "Maaf",
-  makan: "Makan",
-  saya: "Saya",
-  terima_kasih: "Terima Kasih",
-  tuli: "Tuli",
-};
+const WORD_DISPLAY_NAMES: Record<string, string> = Object.fromEntries(
+  WORD_ITEMS.map((item) => [item.id, item.title]),
+);
+
+function toTitleCase(text: string): string {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
 
 export function formatWordLabel(word: string): string {
-  return WORD_DISPLAY_NAMES[word] ?? word.replaceAll("_", " ");
+  return WORD_DISPLAY_NAMES[word] ?? toTitleCase(word.replaceAll("_", " "));
 }
 
 /**
@@ -413,7 +415,7 @@ function runFfnBlock(
 
 let cachedWordPromise: Promise<WordClassifier> | null = null;
 
-const WL_MODEL_VERSION = "pantai-v1";
+const WL_MODEL_VERSION = encodeURIComponent(WORD_MODEL_VERSION);
 
 /**
  * Load and cache the WL-BISINDO 8-word Conformer classifier.

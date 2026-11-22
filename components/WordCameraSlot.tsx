@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { speak } from "@/lib/audio";
-import { WORD_ITEMS, type WordItem } from "@/lib/bisindo";
+import { WORD_ITEMS, WORD_MODEL_VERSION, type WordItem } from "@/lib/bisindo";
 import { detectVideoHands, drawHandLandmarks, loadHandLandmarker } from "@/lib/cv/handLandmarkerClient";
 import { subscribeModelProgress } from "@/lib/cv/mediapipeLoader";
 import type { NormalizedLandmark2D } from "@/lib/cv/normalizeLandmarks";
@@ -58,7 +58,9 @@ let cachedSequencesPromise: Promise<SimulationSequenceMap> | null = null;
 
 function loadSimulationSequences(): Promise<SimulationSequenceMap> {
   if (!cachedSequencesPromise) {
-    cachedSequencesPromise = fetch("/samples/bisindo/wl_sequences.json")
+    cachedSequencesPromise = fetch(
+      `/samples/bisindo/wl_sequences.json?v=${encodeURIComponent(WORD_MODEL_VERSION)}`,
+    )
       .then((res) => {
         if (!res.ok) {
           throw new Error(`Gagal memuat sampel simulasi (${res.status}).`);
