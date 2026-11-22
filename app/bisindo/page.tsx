@@ -610,38 +610,38 @@ export default function BisindoPage() {
               {/* COMPACT REFERENCE & PRACTICE HEADER */}
               <div
                 key={sel}
-                className="card animate-pop flex items-center justify-between gap-3 bg-white p-2.5 sm:p-3"
+                className="card animate-pop flex items-center justify-between gap-3 bg-white p-3 sm:p-3.5"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Thumbnail foto contoh */}
-                  <div className="flex h-14 w-14 sm:h-16 sm:w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-ink bg-sun/20 p-0.5 shadow-[2px_2px_0px_#1B1B3A]">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                  {/* Thumbnail foto contoh (diperbesar agar detail jari lebih jelas) */}
+                  <div className="flex h-20 w-20 sm:h-24 sm:w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-ink bg-sun/20 p-1 shadow-[3px_3px_0px_#1B1B3A]">
                     <img
                       src={`/images/bisindo/${sel}.webp`}
                       alt={`Contoh pose tangan huruf BISINDO ${sel}`}
-                      className="h-full w-full rounded-lg object-contain brightness-[1.12] contrast-[1.04]"
+                      className="h-full w-full rounded-xl object-contain brightness-[1.12] contrast-[1.04]"
                     />
                   </div>
 
-                  {/* Info Huruf & Badge */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border-2 border-ink bg-grape font-display text-lg font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
+                  {/* Info Huruf, Badge & Tips */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-ink bg-grape font-display text-xl font-bold text-white shadow-[2px_2px_0px_#1B1B3A]">
                         {sel}
                       </span>
                       <h3 className="text-base sm:text-lg font-bold leading-tight truncate">Huruf {sel}</h3>
-                      <span className="rounded-full border border-ink sm:border-2 bg-mint px-2 py-0.5 text-[10px] sm:text-xs font-semibold whitespace-nowrap">
+                      <span className="rounded-full border border-ink sm:border-2 bg-mint px-2.5 py-0.5 text-[11px] sm:text-xs font-semibold whitespace-nowrap">
                         {handsOf(sel)} Tangan
                       </span>
                     </div>
 
                     {/* Tips pose jika ada */}
                     {LETTER_TIPS[sel] ? (
-                      <p className="mt-1 line-clamp-1 text-[11px] text-ink/75" title={LETTER_TIPS[sel]}>
+                      <p className="mt-1.5 line-clamp-2 text-xs leading-snug text-ink/80" title={LETTER_TIPS[sel]}>
                         <strong className="text-ink">Tips:</strong> {LETTER_TIPS[sel]}
                       </p>
                     ) : (
-                      <p className="mt-0.5 text-[11px] text-ink/60">
-                        Arahkan isyarat tangan ke kamera
+                      <p className="mt-1 text-xs text-ink/65">
+                        Arahkan isyarat tangan ke kamera sesuai contoh foto.
                       </p>
                     )}
                   </div>
@@ -651,7 +651,7 @@ export default function BisindoPage() {
                 <button
                   type="button"
                   onClick={() => speak(sel, data.settings.audioEnabled)}
-                  className="btn !min-h-[36px] !h-9 !w-9 !p-0 shrink-0 bg-sun"
+                  className="btn !min-h-[40px] !h-10 !w-10 !p-0 shrink-0 bg-sun"
                   aria-label={`Dengarkan huruf ${sel}`}
                 >
                   <Volume2 className="h-4 w-4" />
