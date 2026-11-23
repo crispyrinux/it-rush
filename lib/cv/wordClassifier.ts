@@ -756,10 +756,10 @@ let cachedVariantsPromise: Promise<WlVariantsRegistry> | null = null;
 const WL_MODEL_VERSION = encodeURIComponent(WORD_MODEL_VERSION);
 
 export const DEFAULT_WL_VARIANT: WlVariantSpec = {
-  id: "frozen-head",
-  label: "Model A: Frozen Conformer + Head (110 Klip)",
-  basePath: "/models/bisindo",
-  format: "legacy-tflite-conformer",
+  id: "e2e-conformer",
+  label: "Model B: End-to-End Conformer + MixUp",
+  basePath: "/models/bisindo/variants/e2e-conformer",
+  format: "e2e-conformer",
   featureMode: "standard300",
 };
 
@@ -788,14 +788,22 @@ export function loadWordVariants(): Promise<WlVariantsRegistry> {
  * Load and cache a WL-BISINDO classifier (supports both legacy TFLite-exported and E2E Conformer variants).
  */
 export function loadWordClassifier(
-  basePath = "/models/bisindo",
+  basePath = DEFAULT_WL_VARIANT.basePath,
   options?: {
     format?: "legacy-tflite-conformer" | "e2e-conformer";
     featureMode?: "standard300" | "geo350";
   },
 ): Promise<WordClassifier> {
-  const format = options?.format ?? "legacy-tflite-conformer";
-  const featureMode = options?.featureMode ?? "standard300";
+  const format =
+    options?.format ??
+    (basePath === DEFAULT_WL_VARIANT.basePath
+      ? DEFAULT_WL_VARIANT.format
+      : "legacy-tflite-conformer");
+  const featureMode =
+    options?.featureMode ??
+    (basePath === DEFAULT_WL_VARIANT.basePath
+      ? DEFAULT_WL_VARIANT.featureMode
+      : "standard300");
   const cacheKey = `${basePath}|${format}|${featureMode}`;
 
   const existing = cachedWordPromises.get(cacheKey);

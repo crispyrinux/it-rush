@@ -13,11 +13,8 @@ import {
   loadPoseLandmarker,
 } from "@/lib/cv/poseLandmarkerClient";
 import {
-  DEFAULT_WL_VARIANT,
   extractWlFrameFeatures,
   loadWordClassifier,
-  loadWordVariants,
-  type WlVariantSpec,
   type WordPredictionCandidate,
 } from "@/lib/cv/wordClassifier";
 import { useProgress } from "@/lib/storage/useProgress";
@@ -98,7 +95,6 @@ export default function WordCameraSlot({
   const [handLoadProgress, setHandLoadProgress] = useState<number>(0);
   const [poseLoadProgress, setPoseLoadProgress] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [showLandmarks, setShowLandmarks] = useState<boolean>(data.settings.showLandmarks);
   const [simSampleWord, setSimSampleWord] = useState<string>(word.id);
   const [simFrameIndex, setSimFrameIndex] = useState<number>(0);
   const [isRecording, setIsRecording] = useState<boolean>(false);
@@ -107,9 +103,6 @@ export default function WordCameraSlot({
   const [poseDetected, setPoseDetected] = useState<boolean>(false);
   const [predictions, setPredictions] = useState<WordPredictionCandidate[]>([]);
   const [matched, setMatched] = useState<boolean>(false);
-  const [variants, setVariants] = useState<WlVariantSpec[]>([DEFAULT_WL_VARIANT]);
-  const [activeVariantId, setActiveVariantId] = useState<string>(DEFAULT_WL_VARIANT.id);
-  const [isSwitchingVariant, setIsSwitchingVariant] = useState<boolean>(false);
 
   // Demo playback and zoom modal states
   const [sourceIndex, setSourceIndex] = useState<number>(0);
@@ -120,58 +113,16 @@ export default function WordCameraSlot({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const showLandmarksRef = useRef<boolean>(showLandmarks);
   const audioEnabledRef = useRef<boolean>(data.settings.audioEnabled);
   const isRecordingRef = useRef<boolean>(false);
   const recordStartRef = useRef<number>(0);
   const recordedFramesRef = useRef<Float32Array[]>([]);
   const classifierRef = useRef<Awaited<ReturnType<typeof loadWordClassifier>> | null>(null);
-  const activeVariantIdRef = useRef<string>(activeVariantId);
-  const hasUserPickedVariantRef = useRef<boolean>(false);
   const lastVideoTsRef = useRef<number>(0);
   const lastVideoTimeRef = useRef<number>(-1);
   const celebratedRef = useRef<boolean>(false);
   const demoVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
-
-  const activeVariant =
-    variants.find((v) => v.id === activeVariantId) ?? variants[0] ?? DEFAULT_WL_VARIANT;
-  const {
-    basePath: variantBasePath,
-    format: variantFormat,
-    featureMode: variantFeatureMode,
-  } = activeVariant;
-
-  useEffect(() => {
-    activeVariantIdRef.current = activeVariantId;
-  }, [activeVariantId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadWordVariants().then((registry) => {
-      if (cancelled) return;
-      setVariants(registry.variants);
-      if (!hasUserPickedVariantRef.current) {
-        const nextDefault =
-          registry.variants.find((v) => v.id === registry.defaultVariant)?.id ??
-          registry.variants[0]?.id ??
-          DEFAULT_WL_VARIANT.id;
-        setActiveVariantId(nextDefault);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleVariantChange = useCallback((nextId: string) => {
-    hasUserPickedVariantRef.current = true;
-    setActiveVariantId(nextId);
-  }, []);
-
-  useEffect(() => {
-    showLandmarksRef.current = showLandmarks;
-  }, [showLandmarks]);
 
   useEffect(() => {
     audioEnabledRef.current = data.settings.audioEnabled;
@@ -301,18 +252,7 @@ export default function WordCameraSlot({
         const modelsPromise = Promise.all([
           loadHandLandmarker(),
           loadPoseLandmarker(),
-          (async () => {
-            const registry = await loadWordVariants();
-            const initialVariant =
-              registry.variants.find((v) => v.id === activeVariantIdRef.current) ??
-              registry.variants.find((v) => v.id === registry.defaultVariant) ??
-              registry.variants[0] ??
-              DEFAULT_WL_VARIANT;
-            return loadWordClassifier(initialVariant.basePath, {
-              format: initialVariant.format,
-              featureMode: initialVariant.featureMode,
-            });
-          })(),
+          loadWordClassifier(),
         ]);
 
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -355,7 +295,7 @@ export default function WordCameraSlot({
 
           if (video && canvas && video.readyState >= 2) {
             const vw = video.videoWidth || 640;
-            const vh = video.videoHeight || 360;
+            const vh = video.videoHeight || 480;
             if (canvas.width !== vw || canvas.height !== vh) {
               canvas.width = vw;
               canvas.height = vh;
@@ -380,12 +320,8 @@ export default function WordCameraSlot({
 
               const ctx = canvas.getContext("2d");
               if (ctx) {
-                if (showLandmarksRef.current) {
-                  drawHandLandmarks(ctx, hands, vw, vh, true);
-                  drawPoseAnchors(ctx, poseAnchors, vw, vh, true);
-                } else {
-                  ctx.clearRect(0, 0, vw, vh);
-                }
+                drawHandLandmarks(ctx, hands, vw, vh, true);
+                drawPoseAnchors(ctx, poseAnchors, vw, vh, true);
               }
 
               if (isRecordingRef.current) {
@@ -439,39 +375,6 @@ export default function WordCameraSlot({
   }, [handlePredictions, mode, stopMediaStream]);
 
   useEffect(() => {
-    if (mode !== "webcam" || !classifierRef.current) return;
-
-    let cancelled = false;
-    setIsSwitchingVariant(true);
-    setErrorMsg(null);
-
-    void loadWordClassifier(variantBasePath, {
-      format: variantFormat,
-      featureMode: variantFeatureMode,
-    })
-      .then((nextClassifier) => {
-        if (cancelled) return;
-        classifierRef.current = nextClassifier;
-        setPredictions([]);
-        setMatched(false);
-        setIsSwitchingVariant(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Gagal mengganti model WL-BISINDO.";
-        setErrorMsg(msg);
-        setIsSwitchingVariant(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [mode, variantBasePath, variantFormat, variantFeatureMode]);
-
-  useEffect(() => {
     if (mode !== "simulation") return;
 
     let cancelled = false;
@@ -483,10 +386,7 @@ export default function WordCameraSlot({
         setErrorMsg(null);
 
         const [classifier, sequenceMap] = await Promise.all([
-          loadWordClassifier(variantBasePath, {
-            format: variantFormat,
-            featureMode: variantFeatureMode,
-          }),
+          loadWordClassifier(),
           loadSimulationSequences(),
         ]);
 
@@ -523,12 +423,8 @@ export default function WordCameraSlot({
           if (canvas) {
             const ctx = canvas.getContext("2d");
             if (ctx) {
-              if (showLandmarksRef.current) {
-                drawHandLandmarks(ctx, currentFrame.hands, canvas.width, canvas.height, false);
-                drawPoseAnchors(ctx, currentFrame.poseAnchors, canvas.width, canvas.height, false);
-              } else {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-              }
+              drawHandLandmarks(ctx, currentFrame.hands, canvas.width, canvas.height, false);
+              drawPoseAnchors(ctx, currentFrame.poseAnchors, canvas.width, canvas.height, false);
             }
           }
 
@@ -561,14 +457,7 @@ export default function WordCameraSlot({
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [
-    mode,
-    simSampleWord,
-    handlePredictions,
-    variantBasePath,
-    variantFormat,
-    variantFeatureMode,
-  ]);
+  }, [mode, simSampleWord, handlePredictions]);
 
   const alreadyLearned = isLearned ?? (data.bisindo.learnedWords ?? []).includes(word.id);
 
@@ -691,38 +580,6 @@ export default function WordCameraSlot({
     </div>
   );
 
-  const variantSwitcherNode =
-    variants.length > 1 ? (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-ink bg-paper px-2.5 py-1.5 text-xs">
-        <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
-          <label
-            htmlFor="wl-variant-select"
-            className="font-bold text-ink whitespace-nowrap"
-          >
-            Switch Model AI (A/B Test):
-          </label>
-          <select
-            id="wl-variant-select"
-            value={activeVariant.id}
-            onChange={(e) => handleVariantChange(e.target.value)}
-            disabled={isSwitchingVariant}
-            className="min-w-0 max-w-full rounded-lg border-2 border-ink bg-white px-2 py-1 text-xs font-semibold text-ink"
-          >
-            {variants.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {isSwitchingVariant && (
-          <span className="rounded-full border border-ink bg-sun px-2 py-0.5 text-[10px] font-bold text-ink whitespace-nowrap">
-            Memuat...
-          </span>
-        )}
-      </div>
-    ) : null;
-
   // MODE IDLE: Full Demo Video & Practice Launcher
   if (mode === "idle") {
     return (
@@ -844,8 +701,6 @@ export default function WordCameraSlot({
           )}
         </div>
 
-        {variantSwitcherNode}
-
         {/* Action Buttons to Start Practice */}
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-0.5">
           <button
@@ -890,16 +745,6 @@ export default function WordCameraSlot({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Toggle Rangka */}
-          <button
-            type="button"
-            onClick={() => setShowLandmarks((prev) => !prev)}
-            className="btn !min-h-[34px] bg-paper px-2.5 py-1 text-xs text-ink shadow-[2px_2px_0px_#1B1B3A]"
-            title="Tampilkan / sembunyikan titik rangka"
-          >
-            {showLandmarks ? "Rangka: On" : "Rangka: Off"}
-          </button>
-
           {/* Tombol Tutup */}
           <button
             type="button"
@@ -924,8 +769,6 @@ export default function WordCameraSlot({
           )}
         </div>
       </div>
-
-      {variantSwitcherNode}
 
       {mode === "simulation" && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-ink/40 bg-paper px-3 py-1.5 text-xs">
@@ -978,7 +821,7 @@ export default function WordCameraSlot({
         </button>
 
         {/* WEBCAM VIDEO / CANVAS CONTAINER */}
-        <div className="relative aspect-video max-h-[26dvh] sm:max-h-[30dvh] min-h-[185px] w-full overflow-hidden bg-ink">
+        <div className="relative aspect-[4/3] max-h-[46dvh] sm:max-h-[52dvh] min-h-[300px] sm:min-h-[380px] w-full overflow-hidden bg-ink">
           {mode === "webcam" && (
             <video
               ref={videoRef}
@@ -991,7 +834,7 @@ export default function WordCameraSlot({
           <canvas
             ref={canvasRef}
             width={640}
-            height={360}
+            height={480}
             className="pointer-events-none absolute inset-0 h-full w-full"
           />
 
@@ -1027,14 +870,6 @@ export default function WordCameraSlot({
               )}
             </div>
           )}
-
-          {mode === "simulation" && status === "ready" && !showLandmarks && (
-            <div className="absolute inset-0 flex items-center justify-center bg-ink/75 p-4 text-center text-white">
-              <p className="text-sm font-semibold">
-                Rangka sedang disembunyikan. Tekan Rangka: On untuk melihat animasi gerakan.
-              </p>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1057,8 +892,8 @@ export default function WordCameraSlot({
                 ✓ Cocok (+15 XP)
               </span>
             ) : (
-              <span className="text-[10px] font-semibold text-ink/50 truncate max-w-[140px]">
-                {isSwitchingVariant ? "Memuat model..." : activeVariant.id}
+              <span className="text-[10px] font-semibold text-ink/50">
+                WL-BISINDO
               </span>
             )}
           </div>

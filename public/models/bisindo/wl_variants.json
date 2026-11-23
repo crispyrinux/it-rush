@@ -2,25 +2,11 @@
   "defaultVariant": "e2e-conformer",
   "variants": [
     {
-      "id": "frozen-head",
-      "label": "Model A: Frozen Conformer + Head (110 Klip)",
-      "basePath": "/models/bisindo",
-      "format": "legacy-tflite-conformer",
-      "featureMode": "standard300"
-    },
-    {
       "id": "e2e-conformer",
       "label": "Model B: End-to-End Conformer + MixUp",
       "basePath": "/models/bisindo/variants/e2e-conformer",
       "format": "e2e-conformer",
       "featureMode": "standard300"
-    },
-    {
-      "id": "e2e-geo-conformer",
-      "label": "Model C: Geometric Conformer (Jarak+Sudut)",
-      "basePath": "/models/bisindo/variants/e2e-geo-conformer",
-      "format": "e2e-conformer",
-      "featureMode": "geo350"
     }
   ]
 }
