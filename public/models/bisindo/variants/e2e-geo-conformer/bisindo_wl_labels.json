@@ -1,0 +1,47 @@
+{
+  "label_to_index": {
+    "alam": 0,
+    "ancaman": 1,
+    "bencana": 2,
+    "dampak": 3,
+    "degradasi": 4,
+    "iklim": 5,
+    "lingkungan": 6,
+    "mitigasi": 7,
+    "pemulihan": 8,
+    "perubahan": 9,
+    "sumber_daya": 10
+  },
+  "index_to_label": {
+    "0": "alam",
+    "1": "ancaman",
+    "2": "bencana",
+    "3": "dampak",
+    "4": "degradasi",
+    "5": "iklim",
+    "6": "lingkungan",
+    "7": "mitigasi",
+    "8": "pemulihan",
+    "9": "perubahan",
+    "10": "sumber_daya"
+  },
+  "num_classes": 11,
+  "labels": [
+    "alam",
+    "ancaman",
+    "bencana",
+    "dampak",
+    "degradasi",
+    "iklim",
+    "lingkungan",
+    "mitigasi",
+    "pemulihan",
+    "perubahan",
+    "sumber_daya"
+  ],
+  "feature_dim": 100,
+  "sequence_len": 30,
+  "dataset": "WL-BISINDO",
+  "normalization": "nose-centered + per-sequence std",
+  "temporal_total": 300
+}

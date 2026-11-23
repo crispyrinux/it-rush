@@ -1,0 +1,621 @@
+{
+  "format": "wl-e2e-conformer-v1",
+  "featureMode": "geo350",
+  "seqLen": 30,
+  "inDim": 350,
+  "dim": 64,
+  "numHeads": 2,
+  "numClasses": 11,
+  "lnEps": 0.001,
+  "stem": {
+    "proj": {
+      "w": "stem.proj.w"
+    },
+    "bn": {
+      "scale": "stem.bn.scale",
+      "shift": "stem.bn.shift"
+    }
+  },
+  "blocks": [
+    {
+      "ln1": {
+        "gamma": "b0.ln1.gamma",
+        "beta": "b0.ln1.beta"
+      },
+      "convIn": {
+        "w": "b0.convIn.w",
+        "b": "b0.convIn.b"
+      },
+      "dw": {
+        "w": "b0.dw.w",
+        "b": "b0.dw.b"
+      },
+      "convBn": {
+        "scale": "b0.convBn.scale",
+        "shift": "b0.convBn.shift"
+      },
+      "convOut": {
+        "w": "b0.convOut.w",
+        "b": "b0.convOut.b"
+      },
+      "lnAtt": {
+        "gamma": "b0.lnAtt.gamma",
+        "beta": "b0.lnAtt.beta"
+      },
+      "mha": {
+        "qW": "b0.mha.qW",
+        "qB": "b0.mha.qB",
+        "kW": "b0.mha.kW",
+        "kB": "b0.mha.kB",
+        "vW": "b0.mha.vW",
+        "vB": "b0.mha.vB",
+        "oW": "b0.mha.oW",
+        "oB": "b0.mha.oB"
+      },
+      "lnFf": {
+        "gamma": "b0.lnFf.gamma",
+        "beta": "b0.lnFf.beta"
+      },
+      "ff1": {
+        "w": "b0.ff1.w",
+        "b": "b0.ff1.b"
+      },
+      "ff2": {
+        "w": "b0.ff2.w",
+        "b": "b0.ff2.b"
+      }
+    },
+    {
+      "ln1": {
+        "gamma": "b1.ln1.gamma",
+        "beta": "b1.ln1.beta"
+      },
+      "convIn": {
+        "w": "b1.convIn.w",
+        "b": "b1.convIn.b"
+      },
+      "dw": {
+        "w": "b1.dw.w",
+        "b": "b1.dw.b"
+      },
+      "convBn": {
+        "scale": "b1.convBn.scale",
+        "shift": "b1.convBn.shift"
+      },
+      "convOut": {
+        "w": "b1.convOut.w",
+        "b": "b1.convOut.b"
+      },
+      "lnAtt": {
+        "gamma": "b1.lnAtt.gamma",
+        "beta": "b1.lnAtt.beta"
+      },
+      "mha": {
+        "qW": "b1.mha.qW",
+        "qB": "b1.mha.qB",
+        "kW": "b1.mha.kW",
+        "kB": "b1.mha.kB",
+        "vW": "b1.mha.vW",
+        "vB": "b1.mha.vB",
+        "oW": "b1.mha.oW",
+        "oB": "b1.mha.oB"
+      },
+      "lnFf": {
+        "gamma": "b1.lnFf.gamma",
+        "beta": "b1.lnFf.beta"
+      },
+      "ff1": {
+        "w": "b1.ff1.w",
+        "b": "b1.ff1.b"
+      },
+      "ff2": {
+        "w": "b1.ff2.w",
+        "b": "b1.ff2.b"
+      }
+    }
+  ],
+  "head": {
+    "lnOut": {
+      "gamma": "head.lnOut.gamma",
+      "beta": "head.lnOut.beta"
+    },
+    "dense": {
+      "w": "head.dense.w",
+      "b": "head.dense.b"
+    }
+  },
+  "tensors": {
+    "stem.proj.w": {
+      "shape": [
+        64,
+        350
+      ],
+      "dtype": "float32",
+      "byteOffset": 0,
+      "byteLength": 89600
+    },
+    "stem.bn.scale": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 89600,
+      "byteLength": 256
+    },
+    "stem.bn.shift": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 89856,
+      "byteLength": 256
+    },
+    "b0.ln1.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 90112,
+      "byteLength": 256
+    },
+    "b0.ln1.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 90368,
+      "byteLength": 256
+    },
+    "b0.convIn.w": {
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 90624,
+      "byteLength": 32768
+    },
+    "b0.convIn.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 123392,
+      "byteLength": 512
+    },
+    "b0.dw.w": {
+      "shape": [
+        7,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 123904,
+      "byteLength": 3584
+    },
+    "b0.dw.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 127488,
+      "byteLength": 512
+    },
+    "b0.convBn.scale": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 128000,
+      "byteLength": 512
+    },
+    "b0.convBn.shift": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 128512,
+      "byteLength": 512
+    },
+    "b0.convOut.w": {
+      "shape": [
+        64,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 129024,
+      "byteLength": 32768
+    },
+    "b0.convOut.b": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 161792,
+      "byteLength": 256
+    },
+    "b0.lnAtt.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 162048,
+      "byteLength": 256
+    },
+    "b0.lnAtt.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 162304,
+      "byteLength": 256
+    },
+    "b0.mha.qW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 162560,
+      "byteLength": 16384
+    },
+    "b0.mha.qB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 178944,
+      "byteLength": 256
+    },
+    "b0.mha.kW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 179200,
+      "byteLength": 16384
+    },
+    "b0.mha.kB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 195584,
+      "byteLength": 256
+    },
+    "b0.mha.vW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 195840,
+      "byteLength": 16384
+    },
+    "b0.mha.vB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 212224,
+      "byteLength": 256
+    },
+    "b0.mha.oW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 212480,
+      "byteLength": 16384
+    },
+    "b0.mha.oB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 228864,
+      "byteLength": 256
+    },
+    "b0.lnFf.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 229120,
+      "byteLength": 256
+    },
+    "b0.lnFf.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 229376,
+      "byteLength": 256
+    },
+    "b0.ff1.w": {
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 229632,
+      "byteLength": 32768
+    },
+    "b0.ff1.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 262400,
+      "byteLength": 512
+    },
+    "b0.ff2.w": {
+      "shape": [
+        64,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 262912,
+      "byteLength": 32768
+    },
+    "b0.ff2.b": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 295680,
+      "byteLength": 256
+    },
+    "b1.ln1.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 295936,
+      "byteLength": 256
+    },
+    "b1.ln1.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 296192,
+      "byteLength": 256
+    },
+    "b1.convIn.w": {
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 296448,
+      "byteLength": 32768
+    },
+    "b1.convIn.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 329216,
+      "byteLength": 512
+    },
+    "b1.dw.w": {
+      "shape": [
+        7,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 329728,
+      "byteLength": 3584
+    },
+    "b1.dw.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 333312,
+      "byteLength": 512
+    },
+    "b1.convBn.scale": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 333824,
+      "byteLength": 512
+    },
+    "b1.convBn.shift": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 334336,
+      "byteLength": 512
+    },
+    "b1.convOut.w": {
+      "shape": [
+        64,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 334848,
+      "byteLength": 32768
+    },
+    "b1.convOut.b": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 367616,
+      "byteLength": 256
+    },
+    "b1.lnAtt.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 367872,
+      "byteLength": 256
+    },
+    "b1.lnAtt.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 368128,
+      "byteLength": 256
+    },
+    "b1.mha.qW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 368384,
+      "byteLength": 16384
+    },
+    "b1.mha.qB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 384768,
+      "byteLength": 256
+    },
+    "b1.mha.kW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 385024,
+      "byteLength": 16384
+    },
+    "b1.mha.kB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 401408,
+      "byteLength": 256
+    },
+    "b1.mha.vW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 401664,
+      "byteLength": 16384
+    },
+    "b1.mha.vB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 418048,
+      "byteLength": 256
+    },
+    "b1.mha.oW": {
+      "shape": [
+        64,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 418304,
+      "byteLength": 16384
+    },
+    "b1.mha.oB": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 434688,
+      "byteLength": 256
+    },
+    "b1.lnFf.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 434944,
+      "byteLength": 256
+    },
+    "b1.lnFf.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 435200,
+      "byteLength": 256
+    },
+    "b1.ff1.w": {
+      "shape": [
+        128,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 435456,
+      "byteLength": 32768
+    },
+    "b1.ff1.b": {
+      "shape": [
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 468224,
+      "byteLength": 512
+    },
+    "b1.ff2.w": {
+      "shape": [
+        64,
+        128
+      ],
+      "dtype": "float32",
+      "byteOffset": 468736,
+      "byteLength": 32768
+    },
+    "b1.ff2.b": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 501504,
+      "byteLength": 256
+    },
+    "head.lnOut.gamma": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 501760,
+      "byteLength": 256
+    },
+    "head.lnOut.beta": {
+      "shape": [
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 502016,
+      "byteLength": 256
+    },
+    "head.dense.w": {
+      "shape": [
+        11,
+        64
+      ],
+      "dtype": "float32",
+      "byteOffset": 502272,
+      "byteLength": 2816
+    },
+    "head.dense.b": {
+      "shape": [
+        11
+      ],
+      "dtype": "float32",
+      "byteOffset": 505088,
+      "byteLength": 44
+    }
+  }
+}

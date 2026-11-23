@@ -13,8 +13,11 @@ import {
   loadPoseLandmarker,
 } from "@/lib/cv/poseLandmarkerClient";
 import {
+  DEFAULT_WL_VARIANT,
   extractWlFrameFeatures,
   loadWordClassifier,
+  loadWordVariants,
+  type WlVariantSpec,
   type WordPredictionCandidate,
 } from "@/lib/cv/wordClassifier";
 import { useProgress } from "@/lib/storage/useProgress";
@@ -104,6 +107,9 @@ export default function WordCameraSlot({
   const [poseDetected, setPoseDetected] = useState<boolean>(false);
   const [predictions, setPredictions] = useState<WordPredictionCandidate[]>([]);
   const [matched, setMatched] = useState<boolean>(false);
+  const [variants, setVariants] = useState<WlVariantSpec[]>([DEFAULT_WL_VARIANT]);
+  const [activeVariantId, setActiveVariantId] = useState<string>(DEFAULT_WL_VARIANT.id);
+  const [isSwitchingVariant, setIsSwitchingVariant] = useState<boolean>(false);
 
   // Demo playback and zoom modal states
   const [sourceIndex, setSourceIndex] = useState<number>(0);
@@ -120,11 +126,48 @@ export default function WordCameraSlot({
   const recordStartRef = useRef<number>(0);
   const recordedFramesRef = useRef<Float32Array[]>([]);
   const classifierRef = useRef<Awaited<ReturnType<typeof loadWordClassifier>> | null>(null);
+  const activeVariantIdRef = useRef<string>(activeVariantId);
+  const hasUserPickedVariantRef = useRef<boolean>(false);
   const lastVideoTsRef = useRef<number>(0);
   const lastVideoTimeRef = useRef<number>(-1);
   const celebratedRef = useRef<boolean>(false);
   const demoVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  const activeVariant =
+    variants.find((v) => v.id === activeVariantId) ?? variants[0] ?? DEFAULT_WL_VARIANT;
+  const {
+    basePath: variantBasePath,
+    format: variantFormat,
+    featureMode: variantFeatureMode,
+  } = activeVariant;
+
+  useEffect(() => {
+    activeVariantIdRef.current = activeVariantId;
+  }, [activeVariantId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadWordVariants().then((registry) => {
+      if (cancelled) return;
+      setVariants(registry.variants);
+      if (!hasUserPickedVariantRef.current) {
+        const nextDefault =
+          registry.variants.find((v) => v.id === registry.defaultVariant)?.id ??
+          registry.variants[0]?.id ??
+          DEFAULT_WL_VARIANT.id;
+        setActiveVariantId(nextDefault);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleVariantChange = useCallback((nextId: string) => {
+    hasUserPickedVariantRef.current = true;
+    setActiveVariantId(nextId);
+  }, []);
 
   useEffect(() => {
     showLandmarksRef.current = showLandmarks;
@@ -258,7 +301,18 @@ export default function WordCameraSlot({
         const modelsPromise = Promise.all([
           loadHandLandmarker(),
           loadPoseLandmarker(),
-          loadWordClassifier(),
+          (async () => {
+            const registry = await loadWordVariants();
+            const initialVariant =
+              registry.variants.find((v) => v.id === activeVariantIdRef.current) ??
+              registry.variants.find((v) => v.id === registry.defaultVariant) ??
+              registry.variants[0] ??
+              DEFAULT_WL_VARIANT;
+            return loadWordClassifier(initialVariant.basePath, {
+              format: initialVariant.format,
+              featureMode: initialVariant.featureMode,
+            });
+          })(),
         ]);
 
         const stream = await navigator.mediaDevices.getUserMedia({
@@ -379,9 +433,43 @@ export default function WordCameraSlot({
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
+      classifierRef.current = null;
       stopMediaStream();
     };
   }, [handlePredictions, mode, stopMediaStream]);
+
+  useEffect(() => {
+    if (mode !== "webcam" || !classifierRef.current) return;
+
+    let cancelled = false;
+    setIsSwitchingVariant(true);
+    setErrorMsg(null);
+
+    void loadWordClassifier(variantBasePath, {
+      format: variantFormat,
+      featureMode: variantFeatureMode,
+    })
+      .then((nextClassifier) => {
+        if (cancelled) return;
+        classifierRef.current = nextClassifier;
+        setPredictions([]);
+        setMatched(false);
+        setIsSwitchingVariant(false);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const msg =
+          err instanceof Error
+            ? err.message
+            : "Gagal mengganti model WL-BISINDO.";
+        setErrorMsg(msg);
+        setIsSwitchingVariant(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, variantBasePath, variantFormat, variantFeatureMode]);
 
   useEffect(() => {
     if (mode !== "simulation") return;
@@ -395,7 +483,10 @@ export default function WordCameraSlot({
         setErrorMsg(null);
 
         const [classifier, sequenceMap] = await Promise.all([
-          loadWordClassifier(),
+          loadWordClassifier(variantBasePath, {
+            format: variantFormat,
+            featureMode: variantFeatureMode,
+          }),
           loadSimulationSequences(),
         ]);
 
@@ -470,7 +561,14 @@ export default function WordCameraSlot({
       cancelled = true;
       window.clearTimeout(timerId);
     };
-  }, [mode, simSampleWord, handlePredictions]);
+  }, [
+    mode,
+    simSampleWord,
+    handlePredictions,
+    variantBasePath,
+    variantFormat,
+    variantFeatureMode,
+  ]);
 
   const alreadyLearned = isLearned ?? (data.bisindo.learnedWords ?? []).includes(word.id);
 
@@ -593,6 +691,38 @@ export default function WordCameraSlot({
     </div>
   );
 
+  const variantSwitcherNode =
+    variants.length > 1 ? (
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-ink bg-paper px-2.5 py-1.5 text-xs">
+        <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+          <label
+            htmlFor="wl-variant-select"
+            className="font-bold text-ink whitespace-nowrap"
+          >
+            Switch Model AI (A/B Test):
+          </label>
+          <select
+            id="wl-variant-select"
+            value={activeVariant.id}
+            onChange={(e) => handleVariantChange(e.target.value)}
+            disabled={isSwitchingVariant}
+            className="min-w-0 max-w-full rounded-lg border-2 border-ink bg-white px-2 py-1 text-xs font-semibold text-ink"
+          >
+            {variants.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {isSwitchingVariant && (
+          <span className="rounded-full border border-ink bg-sun px-2 py-0.5 text-[10px] font-bold text-ink whitespace-nowrap">
+            Memuat...
+          </span>
+        )}
+      </div>
+    ) : null;
+
   // MODE IDLE: Full Demo Video & Practice Launcher
   if (mode === "idle") {
     return (
@@ -714,6 +844,8 @@ export default function WordCameraSlot({
           )}
         </div>
 
+        {variantSwitcherNode}
+
         {/* Action Buttons to Start Practice */}
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-0.5">
           <button
@@ -792,6 +924,8 @@ export default function WordCameraSlot({
           )}
         </div>
       </div>
+
+      {variantSwitcherNode}
 
       {mode === "simulation" && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-ink/40 bg-paper px-3 py-1.5 text-xs">
@@ -923,8 +1057,8 @@ export default function WordCameraSlot({
                 ✓ Cocok (+15 XP)
               </span>
             ) : (
-              <span className="text-[10px] font-semibold text-ink/50">
-                WL-BISINDO
+              <span className="text-[10px] font-semibold text-ink/50 truncate max-w-[140px]">
+                {isSwitchingVariant ? "Memuat model..." : activeVariant.id}
               </span>
             )}
           </div>
