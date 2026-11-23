@@ -46,6 +46,7 @@ interface WordCameraSlotProps {
   onSpeak?: () => void;
 }
 
+const COUNTDOWN_DURATION_MS = 2000;
 const RECORD_DURATION_MS = 2500;
 const MIN_RECORD_FRAMES = 6;
 const SIM_FRAME_INTERVAL_MS = 45;
@@ -95,8 +96,10 @@ export default function WordCameraSlot({
   const [handLoadProgress, setHandLoadProgress] = useState<number>(0);
   const [poseLoadProgress, setPoseLoadProgress] = useState<number>(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showLandmarks, setShowLandmarks] = useState<boolean>(false);
   const [simSampleWord, setSimSampleWord] = useState<string>(word.id);
   const [simFrameIndex, setSimFrameIndex] = useState<number>(0);
+  const [countdownSec, setCountdownSec] = useState<number>(0);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordProgress, setRecordProgress] = useState<number>(0);
   const [handDetected, setHandDetected] = useState<boolean>(false);
@@ -113,7 +116,11 @@ export default function WordCameraSlot({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const showLandmarksRef = useRef<boolean>(false);
   const audioEnabledRef = useRef<boolean>(data.settings.audioEnabled);
+  const isCountingDownRef = useRef<boolean>(false);
+  const countdownStartRef = useRef<number>(0);
+  const countdownSecRef = useRef<number>(0);
   const isRecordingRef = useRef<boolean>(false);
   const recordStartRef = useRef<number>(0);
   const recordedFramesRef = useRef<Float32Array[]>([]);
@@ -123,6 +130,10 @@ export default function WordCameraSlot({
   const celebratedRef = useRef<boolean>(false);
   const demoVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    showLandmarksRef.current = showLandmarks;
+  }, [showLandmarks]);
 
   useEffect(() => {
     audioEnabledRef.current = data.settings.audioEnabled;
@@ -174,9 +185,12 @@ export default function WordCameraSlot({
   }, []);
 
   const resetPracticeState = useCallback(() => {
+    isCountingDownRef.current = false;
+    countdownSecRef.current = 0;
     isRecordingRef.current = false;
     recordedFramesRef.current = [];
     celebratedRef.current = false;
+    setCountdownSec(0);
     setIsRecording(false);
     setRecordProgress(0);
     setPredictions([]);
@@ -212,15 +226,25 @@ export default function WordCameraSlot({
   );
 
   const startRecording = useCallback(() => {
-    if (mode !== "webcam" || status !== "ready" || isRecordingRef.current) return;
+    if (
+      mode !== "webcam" ||
+      status !== "ready" ||
+      isRecordingRef.current ||
+      isCountingDownRef.current
+    ) {
+      return;
+    }
     recordedFramesRef.current = [];
-    recordStartRef.current = performance.now();
     celebratedRef.current = false;
-    isRecordingRef.current = true;
+    isCountingDownRef.current = true;
+    countdownStartRef.current = performance.now();
+    const initialSec = Math.ceil(COUNTDOWN_DURATION_MS / 1000);
+    countdownSecRef.current = initialSec;
+    setCountdownSec(initialSec);
     setMatched(false);
     setPredictions([]);
+    setErrorMsg(null);
     setRecordProgress(0);
-    setIsRecording(true);
   }, [mode, status]);
 
   const switchMode = useCallback(
@@ -228,6 +252,7 @@ export default function WordCameraSlot({
       stopMediaStream();
       resetPracticeState();
       setSimFrameIndex(0);
+      setShowLandmarks(nextMode === "simulation");
       setStatus(nextMode === "idle" ? "idle" : "loading");
       setMode(nextMode);
     },
@@ -302,6 +327,27 @@ export default function WordCameraSlot({
             }
 
             const now = performance.now();
+
+            if (isCountingDownRef.current) {
+              const remaining = COUNTDOWN_DURATION_MS - (now - countdownStartRef.current);
+              if (remaining <= 0) {
+                isCountingDownRef.current = false;
+                countdownSecRef.current = 0;
+                setCountdownSec(0);
+                recordedFramesRef.current = [];
+                recordStartRef.current = now;
+                isRecordingRef.current = true;
+                setRecordProgress(0);
+                setIsRecording(true);
+              } else {
+                const nextSec = Math.max(1, Math.ceil(remaining / 1000));
+                if (nextSec !== countdownSecRef.current) {
+                  countdownSecRef.current = nextSec;
+                  setCountdownSec(nextSec);
+                }
+              }
+            }
+
             const currentTime = video.currentTime;
 
             if (currentTime !== lastVideoTimeRef.current) {
@@ -320,8 +366,12 @@ export default function WordCameraSlot({
 
               const ctx = canvas.getContext("2d");
               if (ctx) {
-                drawHandLandmarks(ctx, hands, vw, vh, true);
-                drawPoseAnchors(ctx, poseAnchors, vw, vh, true);
+                if (showLandmarksRef.current) {
+                  drawHandLandmarks(ctx, hands, vw, vh, true);
+                  drawPoseAnchors(ctx, poseAnchors, vw, vh, true);
+                } else {
+                  ctx.clearRect(0, 0, vw, vh);
+                }
               }
 
               if (isRecordingRef.current) {
@@ -369,6 +419,8 @@ export default function WordCameraSlot({
     return () => {
       cancelled = true;
       if (rafId) cancelAnimationFrame(rafId);
+      isCountingDownRef.current = false;
+      countdownSecRef.current = 0;
       classifierRef.current = null;
       stopMediaStream();
     };
@@ -423,8 +475,12 @@ export default function WordCameraSlot({
           if (canvas) {
             const ctx = canvas.getContext("2d");
             if (ctx) {
-              drawHandLandmarks(ctx, currentFrame.hands, canvas.width, canvas.height, false);
-              drawPoseAnchors(ctx, currentFrame.poseAnchors, canvas.width, canvas.height, false);
+              if (showLandmarksRef.current) {
+                drawHandLandmarks(ctx, currentFrame.hands, canvas.width, canvas.height, false);
+                drawPoseAnchors(ctx, currentFrame.poseAnchors, canvas.width, canvas.height, false);
+              } else {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+              }
             }
           }
 
@@ -745,6 +801,16 @@ export default function WordCameraSlot({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* Toggle Rangka */}
+          <button
+            type="button"
+            onClick={() => setShowLandmarks((prev) => !prev)}
+            className="btn !min-h-[34px] bg-paper px-2.5 py-1 text-xs text-ink shadow-[2px_2px_0px_#1B1B3A]"
+            title="Tampilkan / sembunyikan titik rangka"
+          >
+            {showLandmarks ? "Rangka: On" : "Rangka: Off"}
+          </button>
+
           {/* Tombol Tutup */}
           <button
             type="button"
@@ -799,19 +865,27 @@ export default function WordCameraSlot({
         <button
           type="button"
           onClick={startRecording}
-          disabled={isRecording || status !== "ready"}
+          disabled={isRecording || countdownSec > 0 || status !== "ready"}
           className={`btn absolute top-3 left-3 z-20 !min-h-[36px] px-3.5 py-1.5 text-xs font-bold border-2 border-ink shadow-[2px_2px_0px_#1B1B3A] transition-all ${
             isRecording
               ? "bg-coral text-white scale-105 shadow-none"
-              : "bg-sun text-ink hover:bg-sun-light active:scale-95"
+              : countdownSec > 0
+                ? "bg-sky text-ink scale-105 shadow-none"
+                : "bg-sun text-ink hover:bg-sun-light active:scale-95"
           }`}
         >
           <span
             className={`mr-1.5 inline-block h-2.5 w-2.5 rounded-full ${
-              isRecording ? "bg-white animate-ping" : "bg-coral"
+              isRecording
+                ? "bg-white animate-ping"
+                : countdownSec > 0
+                  ? "bg-ink animate-pulse"
+                  : "bg-coral"
             }`}
           />
-          {isRecording ? (
+          {countdownSec > 0 ? (
+            <span>Bersiap ({countdownSec}s)</span>
+          ) : isRecording ? (
             <span>Merekam ({Math.max(0, 2.5 - recordProgress * 2.5).toFixed(1)}s)</span>
           ) : predictions.length > 0 ? (
             <span>Ulangi Rekam</span>
@@ -868,6 +942,27 @@ export default function WordCameraSlot({
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {countdownSec > 0 && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ink/30 backdrop-blur-[1px]">
+              <div className="flex flex-col items-center justify-center rounded-2xl border-4 border-ink bg-sun px-6 py-3 text-center shadow-[4px_4px_0px_#1B1B3A] animate-pop">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ink/80">
+                  Bersiap...
+                </span>
+                <span className="font-display text-4xl font-extrabold leading-none text-ink">
+                  {countdownSec}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {mode === "simulation" && status === "ready" && !showLandmarks && (
+            <div className="absolute inset-0 flex items-center justify-center bg-ink/75 p-4 text-center text-white">
+              <p className="text-sm font-semibold">
+                Rangka sedang disembunyikan. Tekan Rangka: On untuk melihat animasi gerakan.
+              </p>
             </div>
           )}
         </div>
